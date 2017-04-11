@@ -22,6 +22,7 @@ from google.cloud.security.common.gcp_api import _supported_apis
 from google.cloud.security.common.gcp_api import errors as api_errors
 from google.cloud.security.common.util import retryable_exceptions
 
+
 # pylint: disable=too-few-public-methods
 class BaseClient(object):
     """Base client for a specified GCP API and credentials."""
@@ -53,9 +54,12 @@ class BaseClient(object):
            wait_exponential_multiplier=1000, wait_exponential_max=10000,
            stop_max_attempt_number=5)
     # pylint: disable=no-self-use
-    # TODO: Investigate if this could be a standalone methods to remove disable.
     def _execute(self, request):
-        """Executes requests in a rate-limited way.
+        """Executes requests, retrying with exponential backoff.
+
+        This is similar to googleapiclient's underlying HttpRequest.execute(),
+        but in addition to retrying on 500 errors, we also retry if we receive
+        network errors.
 
         Args:
             request: GCP API client request object.

@@ -16,6 +16,9 @@
 
 import StringIO
 
+from googleapiclient.errors import HttpError
+from httplib2 import HttpLib2Error
+
 from google.cloud.security.common.gcp_api import _base_client
 from google.cloud.security.common.gcp_api import errors as api_errors
 from google.cloud.security.common.util import log_util
@@ -46,6 +49,7 @@ class StorageClient(_base_client.BaseClient):
     """Storage Client."""
 
     API_NAME = 'storage'
+    BUCKET = 'bucket'
 
     def __init__(self, credentials=None):
         super(StorageClient, self).__init__(
@@ -71,7 +75,7 @@ class StorageClient(_base_client.BaseClient):
                 body=req_body,
                 media_body=http.MediaIoBaseUpload(
                     f, 'application/octet-stream'))
-            _ = req.execute()
+            _ = self._execute(req)
 
     def get_text_file(self, full_bucket_path):
         """Gets a text file object as a string.
@@ -101,3 +105,32 @@ class StorageClient(_base_client.BaseClient):
             LOGGER.error('Unable to download file: %s', http_error)
             raise http_error
         return file_content
+
+    def list_buckets(self, project_ids):
+        """List buckets for a given project id.
+
+        https://developers.google.com/resources/api-libraries/documentation/storage/v1/python/latest/storage_v1.buckets.html#list
+
+        Args:
+            project_ids: Iterator of string project ids.
+
+        Returns:
+            Generator of bucket objects.
+        """
+        buckets_api = self.service.buckets()
+
+        for project_id in project_ids:
+            request = buckets_api.list(
+                maxResults=1,
+                project=project_id,
+                projection='full')
+            try:
+                while request is not None:
+                    response = self._execute(request)
+                    for bucket in response.get('items'):
+                        yield (project_id, bucket)
+                    request = buckets_api.list_next(
+                        previous_request = request,
+                        previous_response = response)
+            except (HttpError, HttpLib2Error) as e:
+                raise api_errors.ApiExecutionError(self.BUCKET, e)
