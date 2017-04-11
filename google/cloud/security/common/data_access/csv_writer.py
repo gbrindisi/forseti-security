@@ -14,7 +14,9 @@
 
 """Writes the csv files for upload to Cloud SQL."""
 
+from contextlib import contextmanager
 import csv
+import os
 import tempfile
 
 from google.cloud.security.common.data_access.errors import CSVFileError
@@ -22,7 +24,8 @@ from google.cloud.security.common.data_access.errors import CSVFileError
 
 GROUPS_FIELDNAMES = [
     'group_id',
-    'group_email'
+    'group_email',
+    'raw_group'
 ]
 
 ORG_IAM_POLICIES_FIELDNAMES = [
@@ -84,6 +87,7 @@ CSV_FIELDNAME_MAP = {
 }
 
 
+@contextmanager
 def write_csv(resource_name, data, write_header=False):
     """Start the csv writing flow.
 
@@ -105,8 +109,12 @@ def write_csv(resource_name, data, write_header=False):
 
         for i in data:
             writer.writerow(i)
-        return csv_file.name
+
+        # This must be closed before returned for loading.
+        csv_file.close()
+        yield csv_file
+
+        # Remove the csv file after loading.
+        os.remove(csv_file.name)
     except (IOError, OSError, csv.Error) as e:
         raise CSVFileError(resource_name, e)
-    finally:
-        csv_file.close()
