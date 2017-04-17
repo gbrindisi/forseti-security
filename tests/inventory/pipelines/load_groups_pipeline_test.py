@@ -27,6 +27,7 @@ from google.cloud.security.common.gcp_api import errors as api_errors
 from google.cloud.security.common.gcp_type.resource import LifecycleState
 from google.cloud.security.inventory import errors as inventory_errors
 from google.cloud.security.inventory.pipelines import load_groups_pipeline
+from google.cloud.security.inventory import util
 from tests.inventory.pipelines.test_data import fake_configs
 from tests.inventory.pipelines.test_data import fake_groups
 # pylint: enable=line-too-long
@@ -49,22 +50,12 @@ class LoadGroupsPipelineTest(basetest.TestCase):
                 self.mock_admin_client,
                 self.mock_dao))
 
-    def test_can_inventory_google_groups(self):
-        """Test inventory groups can be configured per config values."""
-        self.assertTrue(self.pipeline._can_inventory_google_groups())
-
-    def test_cannot_inventory_google_groups(self):
-        """Test inventory groups cannot be configured per config values."""
-        self.pipeline.configs['inventory_groups'] = None
-        self.pipeline.configs['groups_service_account_key_file'] = None
-        self.assertFalse(self.pipeline._can_inventory_google_groups())
-
     def test_can_transform_groups(self):
         """Test that groups can be transformed."""
 
         groups = self.pipeline._transform(fake_groups.FAKE_GROUPS)
         for (i, group) in enumerate(groups):
-            self.assertEquals(fake_groups.EXPECTED_LOADABLE_GROUPS[i], group)
+            self.assertDictEqual(fake_groups.EXPECTED_LOADABLE_GROUPS[i], group)
 
     def test_api_is_called_to_retrieve_groups(self):
         """Test that api is called to retrieve projects."""
@@ -83,8 +74,7 @@ class LoadGroupsPipelineTest(basetest.TestCase):
             self.pipeline._retrieve()
 
     @mock.patch.object(
-        load_groups_pipeline.LoadGroupsPipeline,
-        '_can_inventory_google_groups')
+        util, 'can_inventory_groups')
     @mock.patch.object(
         load_groups_pipeline.LoadGroupsPipeline,
         '_get_loaded_count')
@@ -98,10 +88,10 @@ class LoadGroupsPipelineTest(basetest.TestCase):
         load_groups_pipeline.LoadGroupsPipeline,
         '_retrieve')
     def test_subroutines_are_called_by_run(self, mock_retrieve, mock_transform,
-            mock_load, mock_get_loaded_count, mock_can_inventory_google_groups):
+            mock_load, mock_get_loaded_count, mock_can_inventory_groups):
         """Test that the subroutines are called by run."""
 
-        mock_can_inventory_google_groups.return_value = True
+        mock_can_inventory_groups.return_value = True
         mock_retrieve.return_value = fake_groups.FAKE_GROUPS
         mock_transform.return_value = fake_groups.EXPECTED_LOADABLE_GROUPS
         self.pipeline.run()
@@ -115,9 +105,3 @@ class LoadGroupsPipelineTest(basetest.TestCase):
             fake_groups.EXPECTED_LOADABLE_GROUPS)
 
         mock_get_loaded_count.assert_called_once
-
-        # Test the exception is handled.
-        mock_can_inventory_google_groups.return_value = False
-
-        with self.assertRaises(inventory_errors.LoadDataPipelineError):
-            self.pipeline.run()

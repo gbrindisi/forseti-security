@@ -21,7 +21,6 @@ Usage:
       --inventory_groups <true|false> (optional) \\
       --groups_service_account_key_file <path to file> (optional)\\
       --domain_super_admin_email <user@domain.com> (optional) \\
-      --organization_id <organization_id> (required) \\
       --db_host <Cloud SQL database hostname/IP> (required) \\
       --db_user <Cloud SQL database user> (required) \\
       --db_name <Cloud SQL database name (required)> \\
@@ -53,21 +52,21 @@ from google.cloud.security.common.gcp_api import cloud_resource_manager as crm
 from google.cloud.security.common.gcp_api import errors as api_errors
 from google.cloud.security.common.util import log_util
 from google.cloud.security.common.util.email_util import EmailUtil
-from google.cloud.security.common.util.errors import EmailSendError
-from google.cloud.security.inventory.errors import LoadDataPipelineError
+from google.cloud.security.common.util import errors as util_errors
+from google.cloud.security.inventory import errors as inventory_errors
 from google.cloud.security.inventory.pipelines import load_groups_pipeline
+from google.cloud.security.inventory.pipelines import load_group_members_pipeline
 from google.cloud.security.inventory.pipelines import load_org_iam_policies_pipeline
+from google.cloud.security.inventory.pipelines import load_orgs_pipeline
 from google.cloud.security.inventory.pipelines import load_projects_iam_policies_pipeline
 from google.cloud.security.inventory.pipelines import load_projects_pipeline
+from google.cloud.security.inventory import util
 # pylint: enable=line-too-long
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_bool('inventory_groups', False,
                   'Whether to inventory GSuite Groups.')
-flags.DEFINE_string('organization_id', None, 'Organization ID.')
-
-flags.mark_flag_as_required('organization_id')
 
 # YYYYMMDDTHHMMSSZ, e.g. 20170130T192053Z
 CYCLE_TIMESTAMP_FORMAT = '%Y%m%dT%H%M%SZ'
@@ -83,9 +82,6 @@ def _exists_snapshot_cycles_table(dao):
 
     Returns:
         True if the snapshot cycle table exists. False otherwise.
-
-    Raises:
-        MySQLError: An error with MySQL has occurred.
     """
     try:
         sql = snapshot_cycles_sql.SELECT_SNAPSHOT_CYCLES_TABLE
@@ -97,6 +93,7 @@ def _exists_snapshot_cycles_table(dao):
 
     if len(result) > 0 and result[0]['TABLE_NAME'] == 'snapshot_cycles':
         return True
+
     return False
 
 def _create_snapshot_cycles_table(dao):
@@ -104,9 +101,6 @@ def _create_snapshot_cycles_table(dao):
 
     Args:
         dao: Data access object.
-
-    Raises:
-        MySQLError: An error with MySQL has occurred.
     """
 
     try:
@@ -126,9 +120,6 @@ def _start_snapshot_cycle(dao):
     Returns:
         cycle_time: Datetime object of the cycle, in UTC.
         cycle_timestamp: String of timestamp, formatted as YYYYMMDDTHHMMSSZ.
-
-    Raises:
-        MySQLError: An error with MySQL has occurred.
     """
     cycle_time = datetime.utcnow()
     cycle_timestamp = cycle_time.strftime(CYCLE_TIMESTAMP_FORMAT)
@@ -155,25 +146,44 @@ def _build_pipelines(cycle_timestamp, configs, dao):
     Args:
         cycle_timestamp: String of timestamp, formatted as YYYYMMDDTHHMMSSZ.
         configs: Dictionary of configurations.
-        dao: Data access object.
+        dao: Pipeline data access object.
 
     Returns:
         List of pipelines that will be run.
+
+    Raises: inventory_errors.LoadDataPipelineError.
     """
-
+    pipelines = []
     crm_api_client = crm.CloudResourceManagerClient()
-    admin_api_client = ad.AdminDirectoryClient()
 
-    return [
+    # The order here matters, e.g. groups_pipeline must come before
+    # group_members_pipeline.
+    pipelines = [
+        load_orgs_pipeline.LoadOrgsPipeline(
+            cycle_timestamp, configs, crm_api_client, dao),
         load_org_iam_policies_pipeline.LoadOrgIamPoliciesPipeline(
             cycle_timestamp, configs, crm_api_client, dao),
         load_projects_pipeline.LoadProjectsPipeline(
             cycle_timestamp, configs, crm_api_client, dao),
         load_projects_iam_policies_pipeline.LoadProjectsIamPoliciesPipeline(
-            cycle_timestamp, configs, crm_api_client, dao),
-        load_groups_pipeline.LoadGroupsPipeline(
-            cycle_timestamp, configs, admin_api_client, dao),
+            cycle_timestamp, configs, crm_api_client, dao)
     ]
+
+    if configs.get('inventory_groups'):
+        if util.can_inventory_groups(configs):
+            admin_api_client = ad.AdminDirectoryClient()
+            pipelines.extend([
+                load_groups_pipeline.LoadGroupsPipeline(
+                    cycle_timestamp, configs, admin_api_client, dao),
+                load_group_members_pipeline.LoadGroupMembersPipeline(
+                    cycle_timestamp, configs, admin_api_client, dao)
+            ])
+        else:
+            raise inventory_errors.LoadDataPipelineError(
+                'Unable to inventory groups with specified arguments:\n%s',
+                configs)
+
+    return pipelines
 
 def _run_pipelines(pipelines):
     """Run the pipelines to load data.
@@ -191,7 +201,7 @@ def _run_pipelines(pipelines):
         try:
             pipeline.run()
             pipeline.status = 'SUCCESS'
-        except LoadDataPipelineError as e:
+        except inventory_errors.LoadDataPipelineError as e:
             LOGGER.error('Encountered error loading data.\n%s', e)
             pipeline.status = 'FAILURE'
             LOGGER.info('Continuing on.')
@@ -208,9 +218,6 @@ def _complete_snapshot_cycle(dao, cycle_timestamp, status):
 
     Returns:
          None
-
-    Raises:
-        MySQLError: An error with MySQL has occurred.
     """
     complete_time = datetime.utcnow()
 
@@ -226,13 +233,12 @@ def _complete_snapshot_cycle(dao, cycle_timestamp, status):
     LOGGER.info('Inventory load cycle completed with %s: %s',
                 status, cycle_timestamp)
 
-def _send_email(organization_id, cycle_time, cycle_timestamp, status, pipelines,
+def _send_email(cycle_time, cycle_timestamp, status, pipelines,
                 sendgrid_api_key, email_sender, email_recipient,
                 email_content=None):
     """Send an email.
 
     Args:
-        organization_id: String of the organization id
         cycle_time: Datetime object of the cycle, in UTC.
         cycle_timestamp: String of timestamp, formatted as YYYYMMDDTHHMMSSZ.
         status: String of the overall status of current snapshot cycle.
@@ -251,7 +257,6 @@ def _send_email(organization_id, cycle_time, cycle_timestamp, status, pipelines,
 
     email_content = EmailUtil.render_from_template(
         'inventory_snapshot_summary.jinja', {
-            'organization_id': organization_id,
             'cycle_time': cycle_time.strftime('%Y %b %d, %H:%M:%S (UTC)'),
             'cycle_timestamp': cycle_timestamp,
             'status_summary': status,
@@ -263,7 +268,7 @@ def _send_email(organization_id, cycle_time, cycle_timestamp, status, pipelines,
         email_util.send(email_sender, email_recipient,
                         email_subject, email_content,
                         content_type='text/html')
-    except EmailSendError:
+    except util_errors.EmailSendError:
         LOGGER.error('Unable to send email that inventory snapshot completed.')
 
 def main(_):
@@ -280,7 +285,8 @@ def main(_):
 
     try:
         pipelines = _build_pipelines(cycle_timestamp, configs, dao)
-    except api_errors.ApiExecutionError as e:
+    except (api_errors.ApiExecutionError,
+            inventory_errors.LoadDataPipelineError) as e:
         LOGGER.error('Unable to build pipelines.\n%s', e)
         sys.exit()
 
@@ -295,8 +301,7 @@ def main(_):
     _complete_snapshot_cycle(dao, cycle_timestamp, snapshot_cycle_status)
 
     if configs.get('email_recipient') is not None:
-        _send_email(configs.get('organization_id'),
-                    cycle_time,
+        _send_email(cycle_time,
                     cycle_timestamp,
                     snapshot_cycle_status,
                     pipelines,

@@ -28,10 +28,12 @@ class ResourceType(object):
     ORGANIZATION = 'organization'
     FOLDER = 'folder'
     PROJECT = 'project'
+    GROUP = 'group'
     resource_types = frozenset([
         ORGANIZATION,
         FOLDER,
-        PROJECT
+        PROJECT,
+        GROUP
     ])
 
     @classmethod
@@ -103,6 +105,11 @@ class Resource(object):
         """String representation of the Resource."""
         return 'Resource<id={},type={},parent={}>'.format(
             self.resource_id, self.resource_type, self.parent)
+
+    @property
+    def id(self):
+        """Get id."""
+        return self.resource_id
 
     def get_id(self):
         """Get resource id."""

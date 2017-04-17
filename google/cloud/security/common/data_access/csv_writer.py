@@ -22,10 +22,31 @@ import tempfile
 from google.cloud.security.common.data_access.errors import CSVFileError
 
 
+GROUP_MEMBERS_FIELDNAMES = [
+    'group_id',
+    'member_kind',
+    'member_role',
+    'member_type',
+    'member_status',
+    'member_id',
+    'raw_member'
+]
+
 GROUPS_FIELDNAMES = [
     'group_id',
     'group_email',
+    'group_kind',
+    'direct_member_count',
     'raw_group'
+]
+
+ORGANIZATIONS_FIELDNAMES = [
+    'org_id',
+    'name',
+    'display_name',
+    'lifecycle_state',
+    'raw_org',
+    'creation_time',
 ]
 
 ORG_IAM_POLICIES_FIELDNAMES = [
@@ -35,7 +56,6 @@ ORG_IAM_POLICIES_FIELDNAMES = [
     'member_name',
     'member_domain'
 ]
-
 
 POLICY_VIOLATION_FIELDNAMES = [
     'resource_id',
@@ -77,7 +97,9 @@ RAW_PROJECT_IAM_POLICIES_FIELDNAMES = [
 ]
 
 CSV_FIELDNAME_MAP = {
+    'group_members': GROUP_MEMBERS_FIELDNAMES,
     'groups': GROUPS_FIELDNAMES,
+    'organizations': ORGANIZATIONS_FIELDNAMES,
     'org_iam_policies': ORG_IAM_POLICIES_FIELDNAMES,
     'policy_violations': POLICY_VIOLATION_FIELDNAMES,
     'projects': PROJECTS_FIELDNAMES,

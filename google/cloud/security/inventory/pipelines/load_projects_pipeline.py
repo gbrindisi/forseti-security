@@ -32,7 +32,7 @@ LOGGER = log_util.get_logger(__name__)
 
 
 class LoadProjectsPipeline(base_pipeline.BasePipeline):
-    """Pipeline to load org IAM policies data into Inventory."""
+    """Pipeline to load project data into Inventory."""
 
     RESOURCE_NAME = 'projects'
 
@@ -46,7 +46,6 @@ class LoadProjectsPipeline(base_pipeline.BasePipeline):
             configs: Dictionary of configurations.
             crm_client: CRM API client.
             dao: Data access object.
-            parser: Forseti parser utility object.
 
         Returns:
             None
@@ -115,19 +114,12 @@ class LoadProjectsPipeline(base_pipeline.BasePipeline):
         try:
             return self.api_client.get_projects(
                 self.RESOURCE_NAME,
-                self.configs['organization_id'],
                 lifecycleState=LifecycleState.ACTIVE)
         except api_errors.ApiExecutionError as e:
             raise inventory_errors.LoadDataPipelineError(e)
 
     def run(self):
         """Runs the data pipeline."""
-        org_id = self.configs.get('organization_id')
-        # Check if the placeholder is replaced in the config/flag.
-        if org_id == '<organization id>':
-            raise inventory_errors.LoadDataPipelineError(
-                'No organization id is specified.')
-
         projects_map = self._retrieve()
 
         loadable_projects = self._transform(projects_map)

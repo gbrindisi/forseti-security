@@ -18,7 +18,6 @@ Usage:
 
   $ forseti_scanner --rules <rules path> \\
       --output_path <output path (optional)> \\
-      --organization_id <organization_id> (required) \\
       --db_host <Cloud SQL database hostname/IP> \\
       --db_user <Cloud SQL database user> \\
       --db_name <Cloud SQL database name (required)> \\
@@ -59,15 +58,15 @@ flags.DEFINE_string('rules', None,
                      'If GCS object, include full path, e.g. '
                      ' "gs://<bucketname>/path/to/file".'))
 
+flags.DEFINE_string('group_rules', None,
+                    ('Path to rules file (yaml/json). '
+                     'If GCS object, include full path, e.g. '
+                     ' "gs://<bucketname>/path/to/file".'))
+
 flags.DEFINE_string('output_path', None,
                     ('Output path (do not include filename). If GCS location, '
                      'the format of the path should be '
                      '"gs://bucket-name/path/for/output".'))
-
-flags.DEFINE_string('organization_id', None, 'Organization id')
-
-flags.mark_flag_as_required('rules')
-flags.mark_flag_as_required('organization_id')
 
 LOGGER = log_util.get_logger(__name__)
 
@@ -75,6 +74,10 @@ LOGGER = log_util.get_logger(__name__)
 def main(_):
     """Run the scanner."""
     LOGGER.info('Initializing the rules engine:\nUsing rules: %s', FLAGS.rules)
+
+    if not FLAGS.rules or not FLAGS.group_rules:
+        print 'Provide a rules file. Use "forseti_scanner --helpful" for help.'
+        sys.exit(1)
 
     rules_engine = OrgRulesEngine(rules_file_path=FLAGS.rules)
     rules_engine.build_rule_book()
@@ -150,7 +153,7 @@ def _get_timestamp():
     latest_timestamp = None
     try:
         dao = Dao()
-        latest_timestamp = dao.select_latest_complete_snapshot_timestamp(
+        latest_timestamp = dao.get_latest_snapshot_timestamp(
             ('SUCCESS', 'PARTIAL_SUCCESS'))
     except MySQLError as err:
         LOGGER.error('Error getting latest snapshot timestamp: %s', err)
@@ -169,7 +172,7 @@ def _get_org_policies(timestamp):
     org_policies = {}
     try:
         org_dao = organization_dao.OrganizationDao()
-        org_policies = org_dao.get_org_iam_policies(timestamp)
+        org_policies = org_dao.get_org_iam_policies('organizations', timestamp)
     except MySQLError as err:
         LOGGER.error('Error getting org policies: %s', err)
 
@@ -187,7 +190,7 @@ def _get_project_policies(timestamp):
     project_policies = {}
     try:
         dao = project_dao.ProjectDao()
-        project_policies = dao.get_project_policies(timestamp)
+        project_policies = dao.get_project_policies('projects', timestamp)
     except MySQLError as err:
         LOGGER.error('Error getting project policies: %s', err)
 
@@ -220,23 +223,23 @@ def _output_results(all_violations, **kwargs):
         **kwargs: The rest of the args.
     """
     # Write the CSV.
-    csv_name = csv_writer.write_csv(
+    with csv_writer.write_csv(
         resource_name='policy_violations',
         data=_write_violations_output(all_violations),
-        write_header=True)
-    LOGGER.info('CSV filename: %s', csv_name)
+        write_header=True) as csv_file:
+        LOGGER.info('CSV filename: %s', csv_file.name)
 
-    # Scanner timestamp for output file and email.
-    now_utc = datetime.utcnow()
+        # Scanner timestamp for output file and email.
+        now_utc = datetime.utcnow()
 
-    # If output_path specified, upload to GCS.
-    if FLAGS.output_path:
-        _upload_csv_to_gcs(FLAGS.output_path, now_utc, csv_name)
+        # If output_path specified, upload to GCS.
+        if FLAGS.output_path:
+            _upload_csv_to_gcs(FLAGS.output_path, now_utc, csv_file.name)
 
-    # Send summary email.
-    if FLAGS.email_recipient is not None:
-        resource_counts = kwargs.get('resource_counts', {})
-        _send_email(csv_name, now_utc, all_violations, resource_counts)
+        # Send summary email.
+        if FLAGS.email_recipient is not None:
+            resource_counts = kwargs.get('resource_counts', {})
+            _send_email(csv_file.name, now_utc, all_violations, resource_counts)
 
 def _upload_csv_to_gcs(output_path, now_utc, csv_name):
     """Upload CSV to Cloud Storage.
@@ -346,7 +349,6 @@ def _build_scan_summary(all_violations, total_resources):
         total_violations += len(violation.members)
 
     return total_violations, resource_summaries
-
 
 if __name__ == '__main__':
     app.run()

@@ -53,6 +53,19 @@ CREATE_RAW_PROJECT_IAM_POLICIES_TABLE = """
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 """
 
+CREATE_ORGANIZATIONS_TABLE = """
+    CREATE TABLE `{0}` (
+        `org_id` bigint(20) unsigned NOT NULL,
+        `name` varchar(255) NOT NULL,
+        `display_name` varchar(255) DEFAULT NULL,
+        `lifecycle_state` enum('ACTIVE','DELETE_REQUESTED',
+            'DELETED','LIFECYCLE_STATE_UNSPECIFIED') DEFAULT NULL,
+        `raw_org` json DEFAULT NULL,
+        `creation_time` datetime DEFAULT NULL,
+        PRIMARY KEY (`org_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+"""
+
 CREATE_ORG_IAM_POLICIES_TABLE = """
     CREATE TABLE `{0}` (
         `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
@@ -79,7 +92,25 @@ CREATE_GROUPS_TABLE = """
         `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
         `group_id` varchar(255) DEFAULT NULL,
         `group_email` varchar(255) DEFAULT NULL,
+        `group_kind` varchar(255) DEFAULT NULL,
+        `direct_member_count` bigint(20) DEFAULT NULL,
         `raw_group` json DEFAULT NULL,
         PRIMARY KEY (`id`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 """
+
+CREATE_GROUP_MEMBERS_TABLE = """
+    CREATE TABLE `{0}` (
+        `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+        `group_id` varchar(255) DEFAULT NULL,
+        `member_kind` varchar(255) DEFAULT NULL,
+        `member_role` varchar(255) DEFAULT NULL,
+        `member_type` varchar(255) DEFAULT NULL,
+        `member_status` varchar(255) DEFAULT NULL,
+        `member_id` varchar(255) DEFAULT NULL,
+        `raw_member` json DEFAULT NULL,
+        PRIMARY KEY (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+"""
+
+# TODO: Add a RAW_GROUP_MEMBERS_TABLE.
