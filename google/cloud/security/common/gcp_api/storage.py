@@ -130,7 +130,7 @@ class StorageClient(_base_client.BaseClient):
                     for bucket in response.get('items'):
                         yield (project_id, bucket)
                     request = buckets_api.list_next(
-                        previous_request = request,
-                        previous_response = response)
+                        previous_request=request,
+                        previous_response=response)
             except (HttpError, HttpLib2Error) as e:
                 raise api_errors.ApiExecutionError(self.BUCKET, e)

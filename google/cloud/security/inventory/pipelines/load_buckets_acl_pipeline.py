@@ -14,10 +14,6 @@
 
 """Pipeline to load buckets data into Inventory."""
 
-import json
-
-from dateutil import parser as dateutil_parser
-
 # TODO: Investigate improving so the pylint disable isn't needed.
 # pylint: disable=line-too-long
 from google.cloud.security.common.data_access import errors as data_access_errors
@@ -83,4 +79,3 @@ class LoadBucketsAclPipeline(base_pipeline.BasePipeline):
     def run(self):
         """Runs the data pipeline."""
         pass
-
