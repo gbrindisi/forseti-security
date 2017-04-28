@@ -81,8 +81,10 @@ class BucketsRuleBook(bre.BaseRuleBook):
                     'Missing resource type in rule {}'.format(rule_index))
 
             if not resource_ids or len(resource_ids) < 1:
-                raise audit_errors.InvalidRulesSchemaError(
-                    'Missing resource ids in rule {}'.format(rule_index))
+                # TODO: If no resource_ids are specified, then we imply an apply to allowed
+                # to do so we are going to retrieve all ids from the inventory
+                # import bucket dao here and retrieve all
+                resource_ids = []
 
             # For each resource id associated with the rule, create a
             # mapping of resource => rules.
@@ -98,18 +100,13 @@ class BucketsRuleBook(bre.BaseRuleBook):
                                  gcp_resource)
                     continue
 
-                rule_members = []
-                rule_def_members = rule_def.get('members')
-                for rule_def_member in rule_def_members:
-                    rule_members.append(
-                        GroupMember(rule_def_member.get('role'),
-                                    rule_def_member.get('type'),
-                                    rule_def_member.get('email')))
-
-                rule = Rule(rule_name=rule_def.get('name'),
-                            rule_index=rule_index,
-                            members=rule_members,
-                            mode=rule_def.get('mode'))
+                rule_bindings = [
+                    IamPolicyBinding.create_from(b)
+                    for b in rule_def.get('bindings')]
+                rule = scanner_rules.Rule(rule_name=rule_def.get('name'),
+                                          rule_index=rule_index,
+                                          bindings=rule_bindings,
+                                          mode=rule_def.get('mode'))
 
                 rule_applies_to = resource.get('applies_to')
                 rule_key = (gcp_resource, rule_applies_to)
@@ -130,7 +127,6 @@ class BucketsRuleBook(bre.BaseRuleBook):
                 # If the rule isn't in the mapping, add it.
                 if rule not in resource_rules.rules:
                     resource_rules.rules.add(rule)
-
 
 
 class Rule(object):
