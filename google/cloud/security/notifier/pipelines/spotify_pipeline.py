@@ -86,6 +86,8 @@ td {
     <p>
     Please take the time to review and resolve our findings and don't hesitate to get in touch if you need support.<br />
     You can reach us on the <strong>#security</strong> channel, or by email to security@spotify.com<br />
+    <br /><br />
+    <strong>Follow this guide: https://confluence.spotify.net/display/SEC/Security+Notifications</strong>
     </p>
     </hr>
     <p>
@@ -101,8 +103,25 @@ td {
 
       Affected projects:
       <ul>
-        {% for v in violation_errors %}
-        <li>{{ v }}</li>
+        {% for p in violation_errors %}
+        <li>
+        {{ p }}
+        <ul>
+         {% for v in violation_errors[p] %}
+         <li>
+         {% if resource == "policy_violations" %}
+            Member <strong>{{ v['violation']['member'] }}</strong> has the role <em>{{ v['violation']['role'] }}</em>
+         {% elif  resource == "buckets_acl_violations" %}
+            Bucket <strong>{{ v['violation']['bucket'] }}</strong> has the role <em>{{ v['violation']['role'] }}</em> set to <em>{{ v['violation']['entity'] }}</em>
+         {% elif  resource == "cloudsql_acl_violations" %}
+            CloudSQL <strong>{{ v['violation']['instance_name'] }}</strong> matched the rule <em>{{ v['violation']['rule_name'] }}</em>
+         {% else %}
+            {{ v['violation'] }}
+         {% endif %}
+         </li>
+         {% endfor %}
+        </ul>
+        </li>
         {% endfor %}
       </ul>
       <br />
@@ -309,8 +328,12 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
     def group_violations_by_owner(self):
         owners_map = {}
         for violation in self.clean_violations:
-            violation_owner = violation['ownership']['owner']
-            project_id = violation['ownership']['project_id']
+            if violation['ownership'] is None:
+                violation_owner = None
+                project_id = 'NOT A PROJECT'
+            else:
+                violation_owner = violation['ownership']['owner']
+                project_id = violation['ownership']['project_id']
             if owners_map.get(violation_owner) is None:
                 owners_map[violation_owner] = {}
 
@@ -335,6 +358,6 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
             if owner is None:
                 owner_email = self.pipeline_config['recipient']
             else:
-                owner_email = 'gianluca@spotify.com'
+                owner_email = self.pipeline_config['recipient'] # todo: set up current owner email
             email_notification = self._compose(owner=owner, to=owner_email, violations=mapped_violations[owner])
             self._send(notification=email_notification)
