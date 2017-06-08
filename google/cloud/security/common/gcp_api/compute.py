@@ -15,12 +15,9 @@
 """Wrapper for Compute API client."""
 
 import gflags as flags
-from googleapiclient.errors import HttpError
-from httplib2 import HttpLib2Error
 from ratelimiter import RateLimiter
 
 from google.cloud.security.common.gcp_api import _base_client
-from google.cloud.security.common.gcp_api import errors as api_errors
 from google.cloud.security.common.util import log_util
 
 FLAGS = flags.FLAGS
@@ -53,8 +50,8 @@ class ComputeClient(_base_client.BaseClient):
         Args:
             project_id: The project id.
 
-        Yield:
-            An iterator of backend services for this project.
+        Return:
+            A list of backend services for this project.
 
         Raise:
             api_errors.ApiExecutionError if API raises an error.
@@ -64,15 +61,12 @@ class ComputeClient(_base_client.BaseClient):
             project=project_id)
         list_next_request = backend_services_api.aggregatedList_next
 
-        try:
-            while list_request is not None:
-                response = self._execute(list_request)
-                yield response
-                list_request = list_next_request(
-                    previous_request=list_request,
-                    previous_response=response)
-        except (HttpError, HttpLib2Error) as e:
-            raise api_errors.ApiExecutionError('backend_services', e)
+        paged_results = self._build_paged_result(
+            list_request, backend_services_api, self.rate_limiter,
+            next_stub=list_next_request)
+
+        return self._flatten_aggregated_list_results(
+            paged_results, 'backendServices')
 
     def get_forwarding_rules(self, project_id, region=None):
         """Get the forwarding rules for a project.
@@ -84,31 +78,33 @@ class ComputeClient(_base_client.BaseClient):
             project_id: The project id.
             region: The region name.
 
-        Yield:
-            An iterator of forwarding rules for this project.
+        Return:
+            A list of forwarding rules for this project.
 
         Raise:
             api_errors.ApiExecutionError if API raises an error.
         """
         forwarding_rules_api = self.service.forwardingRules()
+        # pylint: disable=no-else-return
         if region:
-            list_request = forwarding_rules_api.list(
-                project=project_id, region=region)
-            list_next_request = forwarding_rules_api.list_next
-        else:
-            list_request = forwarding_rules_api.aggregatedList(
-                project=project_id)
-            list_next_request = forwarding_rules_api.aggregatedList_next
+            paged_results = self._build_paged_result(
+                forwarding_rules_api.list(
+                    project=project_id,
+                    region=region),
+                forwarding_rules_api,
+                self.rate_limiter)
 
-        try:
-            while list_request is not None:
-                response = self._execute(list_request)
-                yield response
-                list_request = list_next_request(
-                    previous_request=list_request,
-                    previous_response=response)
-        except (HttpError, HttpLib2Error) as e:
-            raise api_errors.ApiExecutionError('forwarding_rules', e)
+            return self._flatten_list_results(paged_results, 'items')
+
+        else:
+            paged_results = self._build_paged_result(
+                forwarding_rules_api.aggregatedList(project=project_id),
+                forwarding_rules_api,
+                self.rate_limiter,
+                next_stub=forwarding_rules_api.aggregatedList_next)
+
+            return self._flatten_aggregated_list_results(
+                paged_results, 'forwardingRules')
 
     def get_firewall_rules(self, project_id):
         """Get the firewall rules for a given project id.
@@ -123,10 +119,100 @@ class ComputeClient(_base_client.BaseClient):
         firewall_rules_api = self.service.firewalls()
         request = firewall_rules_api.list(project=project_id)
 
-        paged_results = self._build_paged_result(request, firewall_rules_api,
-                                                 self.rate_limiter)
+        paged_result = self._build_paged_result(
+            request, firewall_rules_api, self.rate_limiter)
 
-        firewall_rules = []
-        for page in paged_results:
-            firewall_rules.extend(page.get('items', []))
-        return firewall_rules
+        return self._flatten_list_results(paged_result, 'items')
+
+    def get_instances(self, project_id):
+        """Get the instances for a project.
+
+        Args:
+            project_id: The project id.
+
+        Return:
+            A list of instances for this project.
+
+        Raise:
+            api_errors.ApiExecutionError if API raises an error.
+        """
+        instances_api = self.service.instances()
+        list_request = instances_api.aggregatedList(
+            project=project_id)
+        list_next_request = instances_api.aggregatedList_next
+
+        paged_results = self._build_paged_result(
+            list_request, instances_api, self.rate_limiter,
+            next_stub=list_next_request)
+
+        return self._flatten_aggregated_list_results(
+            paged_results, 'instances')
+
+    def get_instance_groups(self, project_id):
+        """Get the instance groups for a project.
+
+        Args:
+            project_id: The project id.
+
+        Return:
+            A list of instance groups for this project.
+
+        Raise:
+            api_errors.ApiExecutionError if API raises an error.
+        """
+        instance_groups_api = self.service.instanceGroups()
+        list_request = instance_groups_api.aggregatedList(
+            project=project_id)
+        list_next_request = instance_groups_api.aggregatedList_next
+
+        paged_results = self._build_paged_result(
+            list_request, instance_groups_api, self.rate_limiter,
+            next_stub=list_next_request)
+
+        return self._flatten_aggregated_list_results(
+            paged_results, 'instanceGroups')
+
+    def get_instance_templates(self, project_id):
+        """Get the instance templates for a project.
+
+        Args:
+            project_id: The project id.
+
+        Return:
+            A list of instance templates for this project.
+
+        Raise:
+            api_errors.ApiExecutionError if API raises an error.
+        """
+        instance_templates_api = self.service.instanceTemplates()
+        list_request = instance_templates_api.list(
+            project=project_id)
+
+        paged_results = self._build_paged_result(
+            list_request, instance_templates_api, self.rate_limiter)
+
+        return self._flatten_list_results(paged_results, 'items')
+
+    def get_instance_group_managers(self, project_id):
+        """Get the instance group managers for a project.
+
+        Args:
+            project_id: The project id.
+
+        Return:
+            A list of instance group managers for this project.
+
+        Raise:
+            api_errors.ApiExecutionError if API raises an error.
+        """
+        instance_group_managers_api = self.service.instanceGroupManagers()
+        list_request = instance_group_managers_api.aggregatedList(
+            project=project_id)
+        list_next_request = instance_group_managers_api.aggregatedList_next
+
+        paged_results = self._build_paged_result(
+            list_request, instance_group_managers_api, self.rate_limiter,
+            next_stub=list_next_request)
+
+        return self._flatten_aggregated_list_results(
+            paged_results, 'instanceGroupManagers')
