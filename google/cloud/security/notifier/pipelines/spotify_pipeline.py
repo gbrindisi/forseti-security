@@ -142,6 +142,38 @@ td {
 </html>
 """
 
+RECAP_TEMPLATE = """
+Recap, Forseti notification sent today:
+
+<ul>
+{% for owner in violation_errors %}
+<li>To: {{ owner }}
+<ul>
+  {% for p in violation_errors[owner] %}
+  <li>
+  {{ p }}
+  <ul>
+   {% for v in violation_errors[owner][p] %}
+   <li>
+   {% if resource == "policy_violations" %}
+      Member <strong>{{ v['violation']['member'] }}</strong> has the role <em>{{ v['violation']['role'] }}</em>
+   {% elif  resource == "buckets_acl_violations" %}
+      Bucket <strong>{{ v['violation']['bucket'] }}</strong> has the role <em>{{ v['violation']['role'] }}</em> set to <em>{{ v['violation']['entity'] }}</em>
+   {% elif  resource == "cloudsql_acl_violations" %}
+      CloudSQL <strong>{{ v['violation']['instance_name'] }}</strong> matched the rule <em>{{ v['violation']['rule_name'] }}</em>
+   {% else %}
+      {{ v['violation'] }}
+   {% endif %}
+   </li>
+   {% endfor %}
+  </ul>
+  </li>
+  {% endfor %}
+</ul>
+</li>
+{% endfor %}
+"""
+
 class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
     """Spotify pipeline to perform notifications"""
 
@@ -254,9 +286,12 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
 
         return attachment
 
-    def _make_body(self, template_vars):
+    def _make_body(self, template_vars, recap=False):
         template_env = jinja2.Environment()
-        template = template_env.from_string(TEMPLATE)
+        if recap is True:
+            template = template_env.from_string(RECAP_TEMPLATE)
+        else:
+            template = template_env.from_string(TEMPLATE)
         return template.render(template_vars)
 
     def _make_content(self, **kwargs):
@@ -273,12 +308,14 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
         timestamp = datetime.strptime(
             self.cycle_timestamp, '%Y%m%dT%H%M%SZ')
         pretty_timestamp = timestamp.strftime("%d %B %Y - %H:%M:%S")
+
+        is_recap = kwargs.get('is_recap')
         email_content = self._make_body({
                 'scan_date':  pretty_timestamp,
                 'resource': self.resource,
                 'violation_errors': violations_to_send,
                 'owner': kwargs.get('owner')
-            })
+            }, recap=is_recap)
 
         email_subject = '[ALERT] GCP Violations on projects you ({}) own - {}'.format(
             kwargs.get('owner'), pretty_timestamp)
@@ -361,3 +398,7 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
                 owner_email = self.pipeline_config['recipient'] # todo: set up current owner email
             email_notification = self._compose(owner=owner, to=owner_email, violations=mapped_violations[owner])
             self._send(notification=email_notification)
+
+        # send notification recap to sec team
+        email_recap = self._compose(owner=owner, to=self.pipeline_config['recipient'], violations=mapped_violations, is_recap=True)
+        self._send(notification=email_recap)
