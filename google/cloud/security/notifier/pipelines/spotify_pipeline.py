@@ -399,11 +399,11 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
         mapped_violations = self.group_violations_by_owner()
 
         for owner in mapped_violations:
-            print '%s@spotify.com' % owner
-            if owner is None:
+            if owner is None or self.pipeline_config['dry_run'] is True:
+                print "no owner found or dry run"
                 owner_email = self.pipeline_config['recipient']
             else:
-                owner_email = self.pipeline_config['recipient'] # todo: set up current owner email
+                owner_email = 'gianluca+owner@spotify.com' #self.pipeline_config['recipient'] # todo: set up current owner email
             email_notification = self._compose(owner=owner, to=owner_email, violations=mapped_violations[owner])
             self._send(notification=email_notification)
 
