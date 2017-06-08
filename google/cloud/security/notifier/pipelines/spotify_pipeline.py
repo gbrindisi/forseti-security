@@ -408,5 +408,5 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
             self._send(notification=email_notification)
 
         # send notification recap to sec team
-        email_recap = self._compose(owner=owner, to=self.pipeline_config['recipient'], violations=mapped_violations, is_recap=True)
+        email_recap = self._compose(owner=None, to=self.pipeline_config['recipient'], violations=mapped_violations, is_recap=True)
         self._send(notification=email_recap)
