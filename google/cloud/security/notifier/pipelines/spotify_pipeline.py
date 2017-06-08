@@ -143,7 +143,11 @@ td {
 """
 
 RECAP_TEMPLATE = """
-Recap, Forseti notification sent today:
+Hello Security Team,<br />
+hope everything is fine today.<br />
+<br />
+This is a recap of GCP violations discovered today. <br />
+Notification to team owners have already been sent:<br />
 
 <ul>
 {% for owner in violation_errors %}
@@ -151,7 +155,7 @@ Recap, Forseti notification sent today:
 <ul>
   {% for p in violation_errors[owner] %}
   <li>
-  {{ p }}
+  Project: {{ p }}
   <ul>
    {% for v in violation_errors[owner][p] %}
    <li>
@@ -317,8 +321,12 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
                 'owner': kwargs.get('owner')
             }, recap=is_recap)
 
-        email_subject = '[ALERT] GCP Violations on projects you ({}) own - {}'.format(
-            kwargs.get('owner'), pretty_timestamp)
+        if is_recap is True:
+            email_subject = '[ALERT] GCP Violations ({}) summary - {}'.format(
+                self.resource, pretty_timestamp)
+        else:
+            email_subject = '[ALERT] GCP Violations on projects you ({}) own - {}'.format(
+                kwargs.get('owner'), pretty_timestamp)
         return email_subject, email_content
 
     def _compose(self, **kwargs):
