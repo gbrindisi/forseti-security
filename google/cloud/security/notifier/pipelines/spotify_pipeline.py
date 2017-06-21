@@ -35,6 +35,12 @@ TEMP_DIR = '/tmp'
 VIOLATIONS_JSON_FMT = 'violations.{}.{}.{}.json'
 OUTPUT_TIMESTAMP_FMT = '%Y%m%dT%H%M%SZ'
 
+WHITELIST_MAP = {
+    'buckets_acl_violations': 'bucket',
+    'cloudsql_acl_violations': 'instance_name',
+    'policy_violations': 'resource_id'
+}
+
 TEMPLATE = """
 <!doctype html>
 <html>
@@ -389,24 +395,40 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
 
         return owners_map
 
+    def is_whitelisted(self, violation):
+        try:
+            resource_name = violation['violation'][WHITELIST_MAP[self.resource]]
+            for we in self.pipeline_config['whitelist'][self.resource]:
+                if we == resource_name:
+                    # whitelisted
+                    LOGGER.info('Resource "%s" is whitelisted, removed' % resource_name)
+                    return True
+            return False
+        except Exception as e:
+            LOGGER.error('Something went wrong in whitelist check: %s'% e.message)
+            return False
+
     def run(self):
         """Run the email pipeline"""
         self.clean_violations = []
 
         for v in self.violations:
-            self.clean_violations.append(self._get_clean_violation(v))
+            # check the whitelist in config, if there's a match don't add it
+            clean_violation = self._get_clean_violation(v)
+            if not self.is_whitelisted(clean_violation):
+                self.clean_violations.append(clean_violation)
 
         mapped_violations = self.group_violations_by_owner()
 
         for owner in mapped_violations:
             if owner is None or self.pipeline_config['dry_run'] is True:
-                print "no owner found or dry run"
+                LOGGER.info('no owner found or dry run')
                 owner_email = self.pipeline_config['recipient']
             else:
                 owner_email = '%s@spotify.com' % owner
             email_notification = self._compose(owner=owner, to=owner_email, violations=mapped_violations[owner])
-            self._send(notification=email_notification)
+            # self._send(notification=email_notification)
 
         # send notification recap to sec team
         email_recap = self._compose(owner=None, to=self.pipeline_config['recipient'], violations=mapped_violations, is_recap=True)
-        self._send(notification=email_recap)
+        # self._send(notification=email_recap)
