@@ -16,6 +16,7 @@
 
 """Internal pipeline to perform notifications"""
 
+import ast
 import jinja2
 import json
 from datetime import datetime
@@ -239,14 +240,16 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
 
         return ownership
 
-    def __init__(self, resource, cycle_timestamp,
-                 violations, notifier_config, pipeline_config):
-        super(SpotifyPipeline, self).__init__(resource,
-                                              cycle_timestamp,
-                                              violations,
-                                              notifier_config,
-                                              pipeline_config)
+    def __init__(self, resource, cycle_timestamp, violations, global_configs, notifier_config, pipeline_config):
+        super(SpotifyPipeline, self).__init__(
+                                           resource,
+                                           cycle_timestamp,
+                                           violations,
+                                           global_configs,
+                                           notifier_config,
+                                           pipeline_config)
         self.mail_util = EmailUtil(self.pipeline_config['sendgrid_api_key'])
+
 
     def _get_output_filename(self):
         """Create the output filename.
@@ -396,17 +399,26 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
         return owners_map
 
     def is_whitelisted(self, violation):
-        try:
-            resource_name = violation['violation'][WHITELIST_MAP[self.resource]]
-            for we in self.pipeline_config['whitelist'][self.resource]:
-                if we == resource_name:
-                    # whitelisted
-                    LOGGER.info('Resource "%s" is whitelisted, removed' % resource_name)
-                    return True
-            return False
-        except Exception as e:
-            LOGGER.error('Something went wrong in whitelist check: %s'% e.message)
-            return False
+        #try:
+        print violation
+        violation_data = json.loads(violation['violation']['violation_data'])
+        print violation_data
+        if violation_data is None:
+            raise Exception('no violation_data')
+
+        resource_name = violation_data.get(WHITELIST_MAP[self.resource])
+        for we in self.pipeline_config['whitelist'][self.resource]:
+            print '%s %s' % (we, resource_name)
+            if we == resource_name:
+                # whitelisted
+                LOGGER.info('Resource "%s" is whitelisted, removed' % resource_name)
+                return True
+        return False
+        #except Exception as e:
+        #    LOGGER.error('Something went wrong in whitelist check: %s'% e.message)
+        #    print WHITELIST_MAP[self.resource]
+        #    print violation['violation']
+        #    return False
 
     def run(self):
         """Run the email pipeline"""
