@@ -39,7 +39,8 @@ OUTPUT_TIMESTAMP_FMT = '%Y%m%dT%H%M%SZ'
 WHITELIST_MAP = {
     'buckets_acl_violations': 'bucket',
     'cloudsql_acl_violations': 'instance_name',
-    'policy_violations': 'resource_id'
+    'policy_violations': 'resource_id',
+    'bigquery_acl_violations': 'dataset_id'
 }
 
 TEMPLATE = """
@@ -121,7 +122,9 @@ td {
          {% elif  resource == "buckets_acl_violations" %}
             Bucket <strong>{{ v['violation']['violation_data']['bucket'] }}</strong> has the role <em>{{ v['violation']['violation_data']['role'] }}</em> set to <em>{{ v['violation']['violation_data']['entity'] }}</em>
          {% elif  resource == "cloudsql_acl_violations" %}
-            CloudSQL <strong>{{ v['violation']['violation_data']['instance_name'] }}</strong> matched the rule <em>{{ v['violation']['violation_data']['rule_name'] }}</em>
+            CloudSQL <strong>{{ v['violation']['violation_data']['instance_name'] }}</strong> matched the rule <em>{{ v['violation']['rule_name'] }}</em>
+         {% elif resource == "bigquery_acl_violations" %}
+            Dataset <strong>{{ v['violation']['violation_data']['dataset_id'] }}</strong> matched the rule <em>{{ v['violation']['rule_name'] }}</em>
          {% else %}
             {{ v['violation']['violation_data'] }}
          {% endif %}
@@ -171,7 +174,9 @@ Notification to team owners have already been sent:<br />
    {% elif  resource == "buckets_acl_violations" %}
       Bucket <strong>{{ v['violation']['violation_data']['bucket'] }}</strong> has the role <em>{{ v['violation']['violation_data']['role'] }}</em> set to <em>{{ v['violation']['violation_data']['entity'] }}</em>
    {% elif  resource == "cloudsql_acl_violations" %}
-      CloudSQL <strong>{{ v['violation']['violation_data']['instance_name'] }}</strong> matched the rule <em>{{ v['violation']['violation_data']['rule_name'] }}</em>
+      CloudSQL <strong>{{ v['violation']['violation_data']['instance_name'] }}</strong> matched the rule <em>{{ v['violation']['rule_name'] }}</em>
+   {% elif  resource == "bigquery_acl_violations" %}
+      Dataset <strong>{{ v['violation']['violation_data']['dataset_id'] }}</strong> matched the rule <em>{{ v['violation']['rule_name'] }}</em>
    {% else %}
       {{ v['violation']['violation_data'] }}
    {% endif %}
