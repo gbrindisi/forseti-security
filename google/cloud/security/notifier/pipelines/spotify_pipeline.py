@@ -117,13 +117,13 @@ td {
          {% for v in violation_errors[p] %}
          <li>
          {% if resource == "policy_violations" %}
-            Member <strong>{{ v['violation']['member'] }}</strong> has the role <em>{{ v['violation']['role'] }}</em>
+            Member <strong>{{ v['violation']['violation_data']['member'] }}</strong> has the role <em>{{ v['violation']['violation_data']['role'] }}</em>
          {% elif  resource == "buckets_acl_violations" %}
-            Bucket <strong>{{ v['violation']['bucket'] }}</strong> has the role <em>{{ v['violation']['role'] }}</em> set to <em>{{ v['violation']['entity'] }}</em>
+            Bucket <strong>{{ v['violation']['violation_data']['bucket'] }}</strong> has the role <em>{{ v['violation']['violation_data']['role'] }}</em> set to <em>{{ v['violation']['violation_data']['entity'] }}</em>
          {% elif  resource == "cloudsql_acl_violations" %}
-            CloudSQL <strong>{{ v['violation']['instance_name'] }}</strong> matched the rule <em>{{ v['violation']['rule_name'] }}</em>
+            CloudSQL <strong>{{ v['violation']['violation_data']['instance_name'] }}</strong> matched the rule <em>{{ v['violation']['violation_data']['rule_name'] }}</em>
          {% else %}
-            {{ v['violation'] }}
+            {{ v['violation']['violation_data'] }}
          {% endif %}
          </li>
          {% endfor %}
@@ -167,13 +167,13 @@ Notification to team owners have already been sent:<br />
    {% for v in violation_errors[owner][p] %}
    <li>
    {% if resource == "policy_violations" %}
-      Member <strong>{{ v['violation']['member'] }}</strong> has the role <em>{{ v['violation']['role'] }}</em>
+      Member <strong>{{ v['violation']['violation_data']['member'] }}</strong> has the role <em>{{ v['violation']['violation_data']['role'] }}</em>
    {% elif  resource == "buckets_acl_violations" %}
-      Bucket <strong>{{ v['violation']['bucket'] }}</strong> has the role <em>{{ v['violation']['role'] }}</em> set to <em>{{ v['violation']['entity'] }}</em>
+      Bucket <strong>{{ v['violation']['violation_data']['bucket'] }}</strong> has the role <em>{{ v['violation']['violation_data']['role'] }}</em> set to <em>{{ v['violation']['violation_data']['entity'] }}</em>
    {% elif  resource == "cloudsql_acl_violations" %}
-      CloudSQL <strong>{{ v['violation']['instance_name'] }}</strong> matched the rule <em>{{ v['violation']['rule_name'] }}</em>
+      CloudSQL <strong>{{ v['violation']['violation_data']['instance_name'] }}</strong> matched the rule <em>{{ v['violation']['violation_data']['rule_name'] }}</em>
    {% else %}
-      {{ v['violation'] }}
+      {{ v['violation']['violation_data'] }}
    {% endif %}
    </li>
    {% endfor %}
@@ -307,22 +307,54 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
             template = template_env.from_string(TEMPLATE)
         return template.render(template_vars)
 
+    def _format_violations(self, violations, is_recap=False):
+        LOGGER.info('violations are: %s', violations)
+        # sorry guys this is a friday fix and it is ugly as fuck
+        if is_recap:
+            for owner in violations:
+                for project in violations[owner]:
+                    #LOGGER.info('project is: %s', project)
+                    for v in violations[owner][project]:
+                        #LOGGER.info('violations is: %s', v)
+                        try:
+                            vd = json.loads(v['violation']['violation_data'])
+                        except Exception, e:
+                            vd = v['violation']['violation_data']
+                        v['violation']['violation_data'] = vd
+        else:
+            for project in violations:
+                #LOGGER.info('project is: %s', project)
+                for v in violations[project]:
+                    #LOGGER.info('violations is: %s', v)
+                    try:
+                        vd = json.loads(v['violation']['violation_data'])
+                    except Exception, e:
+                        vd = v['violation']['violation_data']
+                    v['violation']['violation_data'] = vd
+        return violations
+
+
+        return violations
+
     def _make_content(self, **kwargs):
         """Create the email content.
 
         Returns:
             A tuple containing the email subject and the content
         """
+        is_recap = kwargs.get('is_recap')
 
         violations_to_send = kwargs.get('violations')
         if violations_to_send is None:
             violations_to_send = self.clean_violations
 
+        violations_to_send = self._format_violations(violations_to_send, is_recap)
+
         timestamp = datetime.strptime(
             self.cycle_timestamp, '%Y%m%dT%H%M%SZ')
         pretty_timestamp = timestamp.strftime("%d %B %Y - %H:%M:%S")
 
-        is_recap = kwargs.get('is_recap')
+
         email_content = self._make_body({
                 'scan_date':  pretty_timestamp,
                 'resource': self.resource,
@@ -399,26 +431,25 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
         return owners_map
 
     def is_whitelisted(self, violation):
-        #try:
-        print violation
-        violation_data = json.loads(violation['violation']['violation_data'])
-        print violation_data
-        if violation_data is None:
-            raise Exception('no violation_data')
+        try:
+            violation_data = json.loads(violation['violation']['violation_data'])
 
-        resource_name = violation_data.get(WHITELIST_MAP[self.resource])
-        for we in self.pipeline_config['whitelist'][self.resource]:
-            print '%s %s' % (we, resource_name)
-            if we == resource_name:
-                # whitelisted
-                LOGGER.info('Resource "%s" is whitelisted, removed' % resource_name)
-                return True
-        return False
-        #except Exception as e:
-        #    LOGGER.error('Something went wrong in whitelist check: %s'% e.message)
-        #    print WHITELIST_MAP[self.resource]
-        #    print violation['violation']
-        #    return False
+            if violation_data is None:
+                raise Exception('no violation_data')
+
+            resource_name = violation_data.get(WHITELIST_MAP[self.resource])
+            for we in self.pipeline_config['whitelist'][self.resource]:
+                print '%s %s' % (we, resource_name)
+                if we == resource_name:
+                    # whitelisted
+                    LOGGER.info('Resource "%s" is whitelisted, removed' % resource_name)
+                    return True
+            return False
+        except Exception as e:
+            LOGGER.error('Something went wrong in whitelist check: %s'% e.message)
+            print WHITELIST_MAP[self.resource]
+            print violation['violation']
+            return False
 
     def run(self):
         """Run the email pipeline"""
