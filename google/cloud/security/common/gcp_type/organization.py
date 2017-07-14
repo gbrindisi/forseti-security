@@ -16,11 +16,13 @@
 See: https://cloud.google.com/resource-manager/reference/rest/v1/organizations
 """
 
-from google.cloud.security.common.gcp_api import cloud_resource_manager as crm
 from google.cloud.security.common.gcp_type import resource
 
 
-# pylint: disable=too-few-public-methods
+# TODO: The next editor must remove this disable and correct issues.
+# pylint: disable=missing-type-doc
+
+
 class OrgLifecycleState(resource.LifecycleState):
     """Organization lifecycle state."""
 
@@ -52,14 +54,3 @@ class Organization(resource.Resource):
             name=name,
             display_name=display_name,
             lifecycle_state=lifecycle_state)
-
-    def exists(self):
-        """Verify that the org exists.
-
-        Returns:
-            True if we can get the org from GCP, otherwise False.
-        """
-        crm_client = crm.CloudResourceManagerClient()
-        org = crm_client.get_organization(self.name)
-
-        return org is not None

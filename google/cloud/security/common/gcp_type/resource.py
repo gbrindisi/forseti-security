@@ -22,6 +22,11 @@ import abc
 from google.cloud.security.common.gcp_type import errors
 
 
+# TODO: The next editor must remove this disable and correct issues.
+# pylint: disable=missing-type-doc,missing-return-type-doc,missing-return-doc
+# pylint: disable=missing-param-doc
+
+
 class ResourceType(object):
     """Resource types."""
 
@@ -42,8 +47,12 @@ class ResourceType(object):
     INSTANCE_TEMPLATE = 'instance_template'
 
     # Data storage
+    BIGQUERY_ACL = 'bigquery_datasets'
     BUCKETS_ACL = 'buckets_acl'
     CLOUDSQL_ACL = 'cloudsql_instances'
+
+    # AppEngine
+    APPENGINE = 'appengine'
 
     resource_types = frozenset([
         ORGANIZATION,
@@ -72,7 +81,6 @@ class ResourceType(object):
         return resource_type
 
 
-# pylint: disable=too-few-public-methods
 class LifecycleState(object):
     """Resource lifecycle state."""
 
@@ -166,8 +174,3 @@ class Resource(object):
     def lifecycle_state(self):
         """Lifecycle state."""
         return self._lifecycle_state
-
-    @abc.abstractmethod
-    def exists(self):
-        """Verify that the resource exists in GCP."""
-        raise NotImplementedError('Implement exists() in subclass')

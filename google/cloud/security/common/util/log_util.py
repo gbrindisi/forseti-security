@@ -20,20 +20,26 @@ Setup logging for Forseti Security. Logs to console and syslog.
 import logging
 import logging.handlers
 
+
 LOG_FORMAT = '%(asctime)s %(name)-12s %(levelname)-8s %(funcName)s %(message)s'
-
-
 LOGGERS = {}
+LOGLEVELS = {
+    'debug': logging.DEBUG,
+    'info' : logging.INFO,
+    'warning' : logging.WARN,
+    'error' : logging.ERROR,
+}
 LOGLEVEL = logging.INFO
+
 
 def get_logger(module_name):
     """Setup the logger.
 
     Args:
-        module_name: The name of the mdule to describe the log entry.
+        module_name (str): The name of the mdule to describe the log entry.
 
     Returns:
-        An instance of the configured logger.
+        logger: An instance of the configured logger.
     """
     # TODO: Move this into a configuration file.
     formatter = logging.Formatter(LOG_FORMAT)
@@ -52,19 +58,28 @@ def _map_logger(func):
     """Map function to current loggers.
 
     Args:
-        func: Function to call on every logger.
+        func (function): Function to call on every logger.
     """
-    map(func, LOGGERS.itervalues())
+    for logger in LOGGERS.itervalues():
+        func(logger)
 
 def set_logger_level(level):
     """Modify log level of existing loggers as well as the default
        for new loggers.
 
     Args:
-        level: The log level to set the loggers to.
+        level (int): The log level to set the loggers to.
     """
-
     # pylint: disable=global-statement
     global LOGLEVEL
     LOGLEVEL = level
     _map_logger(lambda logger: logger.setLevel(level))
+
+def set_logger_level_from_config(level_name):
+    """Set the logger level from a config value.
+
+    Args:
+        level_name (str): The log level name. The accepted values are
+            in the LOGLEVELS variable.
+    """
+    set_logger_level(LOGLEVELS.get(level_name, LOGLEVEL))

@@ -17,11 +17,13 @@
 See: https://cloud.google.com/resource-manager/reference/rest/v1/projects
 """
 
-from google.cloud.security.common.gcp_api import cloud_resource_manager as crm
 from google.cloud.security.common.gcp_type import resource
 
 
-# pylint: disable=too-few-public-methods
+# TODO: The next editor must remove this disable and correct issues.
+# pylint: disable=missing-type-doc,missing-return-type-doc,missing-return-doc
+
+
 class ProjectLifecycleState(resource.LifecycleState):
     """Project lifecycle state."""
 
@@ -63,14 +65,3 @@ class Project(resource.Resource):
     def get_project_number(self):
         """Returns the project number."""
         return self.project_number
-
-    def exists(self):
-        """Verify that the project exists.
-
-        Returns:
-            True if we can get the project from GCP, otherwise False.
-        """
-        crm_client = crm.CloudResourceManagerClient()
-        project = crm_client.get_project(self.id)
-
-        return project is not None

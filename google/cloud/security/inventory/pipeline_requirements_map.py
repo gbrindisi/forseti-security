@@ -15,6 +15,11 @@
 """Map of the requirements needed by the inventory pipelines."""
 
 REQUIREMENTS_MAP = {
+    'appengine':
+        {'module_name': 'load_appengine_pipeline',
+         'depends_on': 'projects',
+         'api_name': 'appengine_api',
+         'dao_name': 'appengine_dao'},
     'backend_services':
         {'module_name': 'load_backend_services_pipeline',
          'depends_on': 'projects',
@@ -45,11 +50,16 @@ REQUIREMENTS_MAP = {
          'depends_on': 'projects',
          'api_name': 'compute_beta_api',
          'dao_name': 'project_dao'},
+    'folder_iam_policies':
+        {'module_name': 'load_folder_iam_policies_pipeline',
+         'depends_on': 'folders',
+         'api_name': 'crm_v2beta1_api',
+         'dao_name': 'folder_dao'},
     'folders':
         {'module_name': 'load_folders_pipeline',
          'depends_on': 'organizations',
          'api_name': 'crm_v2beta1_api',
-         'dao_name': 'dao'},
+         'dao_name': 'folder_dao'},
     'forwarding_rules':
         {'module_name': 'load_forwarding_rules_pipeline',
          'depends_on': 'projects',
@@ -97,7 +107,7 @@ REQUIREMENTS_MAP = {
          'dao_name': 'organization_dao'},
     'projects':
         {'module_name': 'load_projects_pipeline',
-         'depends_on': 'organizations',
+         'depends_on': 'folders',
          'api_name': 'crm_api',
          'dao_name': 'project_dao'},
     'projects_iam_policies':

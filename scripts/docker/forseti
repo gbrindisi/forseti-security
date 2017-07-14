@@ -12,17 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Wrapper for IAM API client."""
+# Dockerfile (experimental) for getting Forseti up and running.
+# You still need to do all the other prereq GCP setup (e.g.
+# setting up service accounts, GCP infrastructure).
 
-from google.cloud.security.common.gcp_api import _base_client
+FROM forseti/base
 
-
-# pylint: disable=too-few-public-methods
-class IamClient(_base_client.BaseClient):
-    """IAM Client."""
-
-    API_NAME = 'iam'
-
-    def __init__(self, credentials=None):
-        super(IamClient, self).__init__(
-            credentials=credentials, api_name=self.API_NAME)
+ADD . /forseti-security/
+WORKDIR /forseti-security/
+RUN python setup.py install
+RUN yes | which forseti_inventory

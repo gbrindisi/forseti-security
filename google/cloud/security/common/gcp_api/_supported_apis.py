@@ -19,19 +19,16 @@ discovery.get()).
 """
 
 SUPPORTED_APIS = {
+    'appengine': {
+        'version': 'v1'
+    },
     'bigquery': {
         'version': 'v2'
-    },
-    'cloudbilling': {
-        'version': 'v1'
     },
     'cloudresourcemanager': {
         'version': 'v1'
     },
     'compute': {
-        'version': 'v1'
-    },
-    'iam': {
         'version': 'v1'
     },
     'storage': {

@@ -19,37 +19,48 @@ from google.cloud.security.common.data_access import project_dao
 from google.cloud.security.common.gcp_type.resource import ResourceType
 from google.cloud.security.scanner.scanners import base_scanner
 
+
 LOGGER = log_util.get_logger(__name__)
 
 
 class BucketsAclScanner(base_scanner.BaseScanner):
     """Pipeline to Bucket acls data from DAO"""
-    def __init__(self, snapshot_timestamp):
+    def __init__(self, global_configs, snapshot_timestamp):
         """Initialization.
 
         Args:
-            snapshot_timestamp: The snapshot timestamp
+            global_configs (dict): Global configurations.
+            snapshot_timestamp (str): The snapshot timestamp
         """
         super(BucketsAclScanner, self).__init__(
+            global_configs,
             snapshot_timestamp)
         self.snapshot_timestamp = snapshot_timestamp
 
     def _get_project_policies(self):
         """Get projects from data source.
+
+        Returns:
+            dict: If successful returns a dictionary of project policies
         """
         project_policies = {}
-        project_policies = (
-            project_dao.ProjectDao().get_project_policies('projects',
-                                                          self.\
-                                                          snapshot_timestamp))
+        project_policies = (project_dao
+                            .ProjectDao(self.global_configs)
+                            .get_project_policies('projects',
+                                                  self.snapshot_timestamp))
         return project_policies
 
     def _get_bucket_acls(self):
         """Get bucket acls from data source.
+
+        Returns:
+            list: List of bucket acls.
         """
         buckets_acls = {}
-        buckets_acls = bucket_dao.BucketDao().\
-                       get_buckets_acls('buckets_acl', self.snapshot_timestamp)
+        buckets_acls = (bucket_dao
+                        .BucketDao(self.global_configs)
+                        .get_buckets_acls('buckets_acl',
+                                          self.snapshot_timestamp))
         return buckets_acls
 
     @staticmethod
@@ -57,10 +68,10 @@ class BucketsAclScanner(base_scanner.BaseScanner):
         """Get resource count for org and project policies.
 
         Args:
-            org_policies: organization policies from inventory.
-            project_policies: project policies from inventory.
+            project_policies (list): project policies from inventory.
+            buckets_acls (list): buclet acls from inventory.
         Returns:
-            Resource count map
+            dict: Resource count map
         """
         resource_counts = {
             ResourceType.PROJECT: len(project_policies),
@@ -70,7 +81,13 @@ class BucketsAclScanner(base_scanner.BaseScanner):
         return resource_counts
 
     def run(self):
-        """Runs the data collection."""
+        """Runs the data collection.
+
+        Returns:
+            tuple: Returns a tuple of lists. The first one is a list of
+                bucket ACL data. The second one is a dictionary of resource
+                counts
+        """
         buckets_acls_data = []
         project_policies = {}
         buckets_acls = self._get_bucket_acls()
@@ -87,11 +104,11 @@ class BucketsAclScanner(base_scanner.BaseScanner):
         """Find violations in the policies.
 
         Args:
-            bucket_data: Buckets to find violations in
-            rules_engine: The rules engine to run.
+            bucket_data (list): Buckets to find violations in
+            rules_engine (BucketRulesEngine): The rules engine to run.
 
         Returns:
-            A list of violations
+            list: A list of bucket violations
         """
 
         all_violations = []

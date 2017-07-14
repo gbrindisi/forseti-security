@@ -14,16 +14,15 @@
 
 """Wrapper for the BigQuery API client."""
 
-import gflags as flags
 from ratelimiter import RateLimiter
 
 from google.cloud.security.common.gcp_api import _base_client
 from google.cloud.security.common.util import log_util
 
-FLAGS = flags.FLAGS
 
-flags.DEFINE_integer('max_bigquery_api_calls_per_100_seconds', 17000,
-                     'BigQuery Discovery requests per 100 seconds.')
+# TODO: The next editor must remove this disable and correct issues.
+# pylint: disable=missing-type-doc,missing-return-type-doc,missing-return-doc
+
 
 LOGGER = log_util.get_logger(__name__)
 
@@ -37,15 +36,23 @@ class BigQueryClient(_base_client.BaseClient):
     DEFAULT_QUOTA_TIMESPAN_PER_SECONDS = 100
     # pylint: enable=invalid-name
 
-    def __init__(self):
+    def __init__(self, global_configs):
+        """Initialize.
+
+        Args:
+            global_configs (dict): Global configurations.
+        """
         super(BigQueryClient, self).__init__(
+            global_configs,
             api_name=self.API_NAME)
         self.rate_limiter = self.get_rate_limiter()
 
     def get_rate_limiter(self):
         """Return an appropriate rate limiter."""
-        return RateLimiter(FLAGS.max_bigquery_api_calls_per_100_seconds,
-                           self.DEFAULT_QUOTA_TIMESPAN_PER_SECONDS)
+
+        return RateLimiter(
+            self.global_configs.get('max_bigquery_api_calls_per_100_seconds'),
+            self.DEFAULT_QUOTA_TIMESPAN_PER_SECONDS)
 
     def get_bigquery_projectids(self):
         """Request and page through bigquery projectids.
@@ -59,19 +66,22 @@ class BigQueryClient(_base_client.BaseClient):
             If there are no project_ids enabled for bigquery an empty list will
             be returned.
         """
+        key = 'projects'
         bigquery_projects_api = self.service.projects()
         request = bigquery_projects_api.list()
 
         paged_results = self._build_paged_result(
             request, bigquery_projects_api, self.rate_limiter)
+
+        flattened_result = self._flatten_list_results(paged_results, key)
+
         project_ids = []
-        for page in paged_results:
-            for project in page.get('projects', []):
-                project_ids.append(project.get('id'))
+        for result in flattened_result:
+            project_ids.append(result.get('id'))
 
         return project_ids
 
-    def get_datasets_for_projectid(self, project_id, key='datasets'):
+    def get_datasets_for_projectid(self, project_id):
         """Return BigQuery datasets stored in the requested project_id.
 
         Args:
@@ -83,21 +93,22 @@ class BigQueryClient(_base_client.BaseClient):
               'projectId': 'project-id'},
              {...}]
         """
+        key = 'datasets'
         bigquery_datasets_api = self.service.datasets()
         request = bigquery_datasets_api.list(projectId=project_id, all=True)
 
         paged_results = self._build_paged_result(
             request, bigquery_datasets_api, self.rate_limiter)
 
+        flattened_result = self._flatten_list_results(paged_results, key)
+
         datasets = []
-        for result in paged_results:
-            if key in result:
-                for item in result.get(key):
-                    datasets.append(item.get('datasetReference'))
+        for result in flattened_result:
+            datasets.append(result.get('datasetReference'))
 
         return datasets
 
-    def get_dataset_access(self, project_id, dataset_id, key='access'):
+    def get_dataset_access(self, project_id, dataset_id):
         """Return the access portion of the dataset resource object.
 
         Args:
@@ -110,6 +121,7 @@ class BigQueryClient(_base_client.BaseClient):
             {'role': 'OWNER', 'userByEmail': 'user@domain.com'},
             {'role': 'READER', 'specialGroup': 'projectReaders'}]
         """
+        key = 'access'
         bigquery_datasets_api = self.service.datasets()
         request = bigquery_datasets_api.get(projectId=project_id,
                                             datasetId=dataset_id)

@@ -15,12 +15,14 @@
 
 # Possible credentials
 /*.json
+scripts/gcp_setup/*.json
 
 # Dev scripts
 scripts/dev*.sh
 
 # User-edited configs
 deployment-templates/*.yaml
+configs/*.yaml
 
 # Build/dist
 .eggs/

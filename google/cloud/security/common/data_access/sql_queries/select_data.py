@@ -109,7 +109,7 @@ FOLDER_BY_ID = """
 """
 
 FOLDER_IAM_POLICIES = """
-    SELECT f.folder_id, f.display_name, p.lifecycle_state,
+    SELECT f.folder_id, f.display_name, f.lifecycle_state,
     f.parent_type, f.parent_id, i.iam_policy
     FROM folders_{0} f INNER JOIN raw_folder_iam_policies_{1} i
     ON f.folder_id = i.folder_id
@@ -149,17 +149,24 @@ BUCKETS_BY_PROJECT_ID = """
     WHERE project_number = {1};
 """
 
+# TODO: reduce these sql to a generic statement
+SELECT_POLICY_VIOLATIONS = """
+    SELECT * FROM violations_{0}
+    WHERE violation_type in ('ADDED', 'REMOVED');
+"""
 
-SELECT_VIOLATIONS = """
-    SELECT * FROM violations_{0};
+SELECT_BIGQUERY_ACL_VIOLATIONS = """
+    SELECT * FROM violations_{0}
+    WHERE violation_type = 'BIGQUERY_VIOLATION';
 """
 
 SELECT_BUCKETS_ACL_VIOLATIONS = """
-    SELECT * FROM buckets_acl_violations_{0};
+    SELECT * FROM violations_{0}
+    WHERE violation_type = 'BUCKET_VIOLATION';
 """
-
-SELECT_CLOUDSQL_ACL_VIOLATION = """
-    SELECT * FROM cloudsql_acl_violations_{0};
+SELECT_CLOUDSQL_VIOLATIONS = """
+    SELECT * FROM violations_{0}
+    WHERE violation_type = 'CLOUD_SQL_VIOLATION';
 """
 
 SELECT_GROUPS_VIOLATIONS = """
@@ -217,6 +224,10 @@ INSTANCE_GROUP_MANAGERS = """
     FROM instance_group_managers_{0}
 """
 
+BIGQUERY_ACLS = """
+    SELECT * FROM bigquery_datasets_{0};
+"""
+
 BUCKET_ACLS = """
     SELECT bucket, entity, email, domain, role, project_number
     FROM buckets_{0}, buckets_acl_{0}
@@ -233,4 +244,11 @@ CLOUDSQL_INSTANCES = """
 CLOUDSQL_ACLS = """
     SELECT project_number, instance_name, value
     FROM cloudsql_ipconfiguration_authorizednetworks_{0}
+"""
+
+APPENGINE_APPS = """
+    SELECT id, project_id, name, app_id, dispatch_rules, auth_domain,
+    location_id, code_bucket, default_cookie_expiration, serving_status,
+    default_hostname, default_bucket, iap, gcr_domain, raw_application
+    FROM appengine_{0}
 """

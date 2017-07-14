@@ -21,6 +21,29 @@ import tempfile
 
 from google.cloud.security.common.data_access.errors import CSVFileError
 
+
+# TODO: The next editor must remove this disable and correct issues.
+# pylint: disable=missing-type-doc,redundant-returns-doc
+# pylint: disable=missing-raises-doc,missing-yield-doc,missing-yield-type-doc
+
+
+APPENGINE_SERVICES_FIELDNAMES = [
+    'project_id',
+    'name',
+    'app_id',
+    'dispatch_rules',
+    'auth_domain',
+    'location_id',
+    'code_bucket',
+    'default_cookie_expiration',
+    'serving_status',
+    'default_hostname',
+    'default_bucket',
+    'iap',
+    'gcr_domain',
+    'raw_application'
+]
+
 BACKEND_SERVICES_FIELDNAMES = [
     'id',
     'project_id',
@@ -41,6 +64,7 @@ BACKEND_SERVICES_FIELDNAMES = [
     'region',
     'session_affinity',
     'timeout_sec',
+    'raw_backend_service'
 ]
 
 BIGQUERY_DATASET_FIELDNAMES = [
@@ -71,19 +95,6 @@ BUCKETS_ACL_FIELDNAMES = [
     'raw_bucket_acl'
 ]
 
-BUCKETS_ACL_VIOLATIONS = [
-    'resource_type',
-    'resource_id',
-    'rule_name',
-    'rule_index',
-    'violation_type',
-    'role',
-    'entity',
-    'email',
-    'domain',
-    'bucket'
-]
-
 # TODO: Add pydoc to describe the mapping of the custom field naming
 # to the field names in the resource objects.
 # https://cloud.google.com/storage/docs/json_api/v1/buckets#resource
@@ -99,17 +110,6 @@ BUCKETS_FIELDNAMES = [
     'bucket_selflink',
     'bucket_lifecycle_raw',
     'raw_bucket'
-]
-
-CLOUDSQL_ACL_VIOLATIONS = [
-    'resource_type',
-    'resource_id',
-    'rule_name',
-    'rule_index',
-    'violation_type',
-    'instance_name',
-    'authorized_networks',
-    'ssl_enabled',
 ]
 
 CLOUDSQL_INSTANCES_FIELDNAMES = [
@@ -163,6 +163,7 @@ CLOUDSQL_INSTANCES_FIELDNAMES = [
     'settings_tier',
     'state',
     'suspension_reason',
+    'raw_cloudsql_instance',
 ]
 
 CLOUDSQL_IPADDRESSES_FIELDNAMES = [
@@ -202,6 +203,14 @@ FIREWALL_RULES_FIELDNAMES = [
     'raw_firewall_rule'
 ]
 
+FOLDER_IAM_POLICIES_FIELDNAMES = [
+    'folder_id',
+    'role',
+    'member_type',
+    'member_name',
+    'member_domain'
+]
+
 FOLDERS_FIELDNAMES = [
     'folder_id',
     'name',
@@ -211,6 +220,11 @@ FOLDERS_FIELDNAMES = [
     'parent_id',
     'raw_folder',
     'create_time',
+]
+
+RAW_FOLDER_IAM_POLICIES_FIELDNAMES = [
+    'folder_id',
+    'iam_policy'
 ]
 
 FORWARDING_RULES_FIELDNAMES = [
@@ -229,6 +243,7 @@ FORWARDING_RULES_FIELDNAMES = [
     'subnetwork',
     'network',
     'backend_service',
+    'raw_forwarding_rule',
 ]
 
 GROUP_MEMBERS_FIELDNAMES = [
@@ -268,6 +283,7 @@ INSTANCES_FIELDNAMES = [
     'status_message',
     'tags',
     'zone',
+    'raw_instance',
 ]
 
 INSTANCE_GROUPS_FIELDNAMES = [
@@ -282,6 +298,7 @@ INSTANCE_GROUPS_FIELDNAMES = [
     'size',
     'subnetwork',
     'zone',
+    'raw_instance_group',
 ]
 
 INSTANCE_TEMPLATES_FIELDNAMES = [
@@ -291,6 +308,7 @@ INSTANCE_TEMPLATES_FIELDNAMES = [
     'description',
     'name',
     'properties',
+    'raw_instance_template',
 ]
 
 INSTANCE_GROUP_MANAGERS_FIELDNAMES = [
@@ -308,6 +326,7 @@ INSTANCE_GROUP_MANAGERS_FIELDNAMES = [
     'target_pools',
     'target_size',
     'zone',
+    'raw_instance_group_manager',
 ]
 
 ORG_IAM_POLICIES_FIELDNAMES = [
@@ -329,14 +348,13 @@ ORGANIZATIONS_FIELDNAMES = [
 ]
 
 
-POLICY_VIOLATION_FIELDNAMES = [
+VIOLATION_FIELDNAMES = [
     'resource_id',
     'resource_type',
     'rule_index',
     'rule_name',
     'violation_type',
-    'role',
-    'member'
+    'violation_data'
 ]
 
 PROJECT_IAM_POLICIES_FIELDNAMES = [
@@ -374,33 +392,46 @@ RAW_PROJECT_IAM_POLICIES_FIELDNAMES = [
 ]
 
 CSV_FIELDNAME_MAP = {
+    'appengine': APPENGINE_SERVICES_FIELDNAMES,
+
     'backend_services': BACKEND_SERVICES_FIELDNAMES,
+
     'bigquery_datasets': BIGQUERY_DATASET_FIELDNAMES,
+
     'buckets': BUCKETS_FIELDNAMES,
     'buckets_acl': BUCKETS_ACL_FIELDNAMES,
-    'buckets_acl_violations': BUCKETS_ACL_VIOLATIONS,
-    'cloudsql_acl_violations': CLOUDSQL_ACL_VIOLATIONS,
+    'raw_buckets': RAW_BUCKETS_FIELDNAMES,
+
     'cloudsql_instances': CLOUDSQL_INSTANCES_FIELDNAMES,
     'cloudsql_ipaddresses': CLOUDSQL_IPADDRESSES_FIELDNAMES,
     'cloudsql_ipconfiguration_authorizednetworks': \
         CLOUDSQL_IPCONFIGURATION_AUTHORIZEDNETWORKS_FIELDNAMES,
+
     'firewall_rules': FIREWALL_RULES_FIELDNAMES,
+
+    'folder_iam_policies': FOLDER_IAM_POLICIES_FIELDNAMES,
     'folders': FOLDERS_FIELDNAMES,
+    'raw_folder_iam_policies': RAW_FOLDER_IAM_POLICIES_FIELDNAMES,
+
     'forwarding_rules': FORWARDING_RULES_FIELDNAMES,
+
     'group_members': GROUP_MEMBERS_FIELDNAMES,
     'groups': GROUPS_FIELDNAMES,
+
     'instances': INSTANCES_FIELDNAMES,
     'instance_groups': INSTANCE_GROUPS_FIELDNAMES,
     'instance_templates': INSTANCE_TEMPLATES_FIELDNAMES,
     'instance_group_managers': INSTANCE_GROUP_MANAGERS_FIELDNAMES,
+
     'org_iam_policies': ORG_IAM_POLICIES_FIELDNAMES,
     'organizations': ORGANIZATIONS_FIELDNAMES,
-    'policy_violations': POLICY_VIOLATION_FIELDNAMES,
+    'raw_org_iam_policies': RAW_ORG_IAM_POLICIES_FIELDNAMES,
+
     'project_iam_policies': PROJECT_IAM_POLICIES_FIELDNAMES,
     'projects': PROJECTS_FIELDNAMES,
-    'raw_buckets': RAW_BUCKETS_FIELDNAMES,
-    'raw_org_iam_policies': RAW_ORG_IAM_POLICIES_FIELDNAMES,
     'raw_project_iam_policies': RAW_PROJECT_IAM_POLICIES_FIELDNAMES,
+
+    'violations': VIOLATION_FIELDNAMES,
 }
 
 

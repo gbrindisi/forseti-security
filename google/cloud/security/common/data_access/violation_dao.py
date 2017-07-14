@@ -14,6 +14,7 @@
 
 """Provides the data access object (DAO) for Organizations."""
 
+from collections import namedtuple
 import MySQLdb
 
 from google.cloud.security.common.data_access import dao
@@ -27,22 +28,29 @@ LOGGER = log_util.get_logger(__name__)
 class ViolationDao(dao.Dao):
     """Data access object (DAO) for rule violations."""
 
+    violation_attribute_list = ['resource_type', 'resource_id', 'rule_name',
+                                'rule_index', 'violation_type',
+                                'violation_data']
+    frozen_violation_attribute_list = frozenset(violation_attribute_list)
+    Violation = namedtuple('Violation', frozen_violation_attribute_list)
+
     def insert_violations(self, violations, resource_name,
                           snapshot_timestamp=None):
         """Import violations into database.
 
         Args:
-            violations: An iterator of RuleViolations.
-            resource_name: String that defines a resource
-            snapshot_timestamp: The snapshot timestamp to associate these
-                violations with.
+            violations (iterator): An iterator of RuleViolations.
+            resource_name (str): String that defines a resource.
+            snapshot_timestamp (str): The snapshot timestamp to associate
+                these violations with.
 
-        Return:
-            A tuple of (int, list) containing the count of inserted rows and
-            a list of violations that encountered an error during insert.
+        Returns:
+            tuple: A tuple of (int, list) containing the count of inserted
+                rows and a list of violations that encountered an error during
+                insert.
 
         Raise:
-            MySQLError if snapshot table could not be created.
+            MySQLError: is raised when the snapshot table can not be created.
         """
 
         try:
@@ -55,11 +63,23 @@ class ViolationDao(dao.Dao):
             snapshot_table = self._create_snapshot_table(
                 resource_name, snapshot_timestamp)
         except MySQLdb.Error, e:
-            raise db_errors.MySQLError(resource_name, e)
+            if 'already exists' in str(e):
+                LOGGER.info('snapshot table already present')
+                snapshot_table = self._get_snapshot_table(
+                    resource_name, snapshot_timestamp)
+            else:
+                raise db_errors.MySQLError(resource_name, e)
 
         inserted_rows = 0
         violation_errors = []
         for violation in violations:
+            violation = self.Violation(
+                resource_type=violation['resource_type'],
+                resource_id=violation['resource_id'],
+                rule_name=violation['rule_name'],
+                rule_index=violation['rule_index'],
+                violation_type=violation['violation_type'],
+                violation_data=violation['violation_data'])
             for formatted_violation in _format_violation(violation,
                                                          resource_name):
                 try:
@@ -79,10 +99,11 @@ class ViolationDao(dao.Dao):
         """Get all the violations.
 
         Args:
-            timestamp: The timestamp of the snapshot.
+            timestamp (str): The timestamp of the snapshot.
+            resource_name (str): String that defines a resource.
 
         Returns:
-             A tuple of the violations as dict.
+            tuple: A tuple of the violations as dict.
         """
         violations_sql = vm.VIOLATION_SELECT_MAP[resource_name](timestamp)
         rows = self.execute_sql_with_fetch(
@@ -95,11 +116,11 @@ def _format_violation(violation, resource_name):
     function for the resource.
 
     Args:
-        violation: An iterator of RuleViolations.
-        resource_name: String that defines a resource
+        violation (iterator): An iterator of RuleViolations.
+        resource_name (str): String that defines a resource.
 
     Returns:
-        Formatted violations
+        tuple: A tuple of formatted violation.
     """
     formatted_output = vm.VIOLATION_MAP[resource_name](violation)
     return formatted_output

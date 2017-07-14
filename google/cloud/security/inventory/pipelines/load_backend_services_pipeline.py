@@ -24,6 +24,12 @@ from google.cloud.security.common.util import parser
 from google.cloud.security.inventory import errors as inventory_errors
 from google.cloud.security.inventory.pipelines import base_pipeline
 
+
+# TODO: The next editor must remove this disable and correct issues.
+# pylint: disable=missing-type-doc,missing-return-type-doc
+# pylint: disable=missing-yield-type-doc
+
+
 LOGGER = log_util.get_logger(__name__)
 
 
@@ -73,7 +79,9 @@ class LoadBackendServicesPipeline(base_pipeline.BasePipeline):
                        'region': backend_service.get('region'),
                        'session_affinity': backend_service.get(
                            'sessionAffinity'),
-                       'timeout_sec': backend_service.get('timeoutSec')}
+                       'timeout_sec': backend_service.get('timeoutSec'),
+                       'raw_backend_service':
+                           parser.json_stringify(backend_service)}
 
     def _retrieve(self):
         """Retrieve backend services from GCP.
@@ -85,7 +93,9 @@ class LoadBackendServicesPipeline(base_pipeline.BasePipeline):
             A dict mapping projects with their backend services (list):
             {project_id: [backend_services]}
         """
-        projects = proj_dao.ProjectDao().get_projects(self.cycle_timestamp)
+        projects = (proj_dao
+                    .ProjectDao(self.global_configs)
+                    .get_projects(self.cycle_timestamp))
         backend_services = {}
         for project in projects:
             try:

@@ -18,6 +18,12 @@ import abc
 
 from google.cloud.security.common.util import log_util
 
+
+# TODO: The next editor must remove this disable and correct issues.
+# pylint: disable=missing-type-doc
+# pylint: disable=missing-param-doc,redundant-returns-doc
+
+
 LOGGER = log_util.get_logger(__name__)
 
 
@@ -25,15 +31,17 @@ class BaseScanner(object):
     """This is a base class skeleton for data retrival pipelines"""
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, snapshot_timestamp):
+    def __init__(self, global_configs, snapshot_timestamp):
         """Constructor for the base pipeline.
 
         Args:
-            cycle_timestamp: String of timestamp, formatted as
+            global_configs (dict): Global configurations.
+            snapshot_timestamp: String of timestamp, formatted as
 
         Returns:
             None
         """
+        self.global_configs = global_configs
         self.snapshot_timestamp = snapshot_timestamp
 
     @abc.abstractmethod

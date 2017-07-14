@@ -17,10 +17,12 @@ import sys
 
 from google.cloud.security.common.util import log_util
 from google.cloud.security.common.data_access import errors as da_errors
+from google.cloud.security.common.data_access import folder_dao
 from google.cloud.security.common.data_access import organization_dao
 from google.cloud.security.common.data_access import project_dao
 from google.cloud.security.common.gcp_type.resource import ResourceType
 from google.cloud.security.scanner.scanners import base_scanner
+
 
 LOGGER = log_util.get_logger(__name__)
 
@@ -28,65 +30,82 @@ LOGGER = log_util.get_logger(__name__)
 class IamPolicyScanner(base_scanner.BaseScanner):
     """Pipeline to IAM data from DAO"""
 
-    def __init__(self, snapshot_timestamp):
+    def __init__(self, global_configs, snapshot_timestamp):
         """Constructor for the base pipeline.
 
         Args:
-            cycle_timestamp: String of timestamp, formatted as
-
-        Returns:
-            None
+            global_configs (dict): Global configurations.
+            snapshot_timestamp (str): String of timestamp, formatted as
         """
         super(IamPolicyScanner, self).__init__(
+            global_configs,
             snapshot_timestamp)
         self.snapshot_timestamp = snapshot_timestamp
 
-    def _get_org_policies(self):
-        """Get orgs from data source.
-
-        Args:
-            timestamp: The snapshot timestamp.
+    def _get_org_iam_policies(self):
+        """Get orgs IAM policies from data source.
 
         Returns:
-            The org policies.
+            dict: The org policies.
         """
         org_policies = {}
         try:
-            org_dao = organization_dao.OrganizationDao()
+            org_dao = organization_dao.OrganizationDao(self.global_configs)
             org_policies = org_dao.get_org_iam_policies(
                 'organizations', self.snapshot_timestamp)
         except da_errors.MySQLError as e:
             LOGGER.error('Error getting Organization IAM policies: %s', e)
         return org_policies
 
-    def _get_project_policies(self):
-        """Get projects from data source.
-
-        Args:
-            timestamp: The snapshot timestamp.
+    def _get_folder_iam_policies(self):
+        """Get folder IAM policies from data source.
 
         Returns:
-            The project policies.
+            dict: The folder policies.
+        """
+        folder_policies = {}
+        try:
+            fdao = folder_dao.FolderDao(self.global_configs)
+            folder_policies = fdao.get_folder_iam_policies(
+                'folders', self.snapshot_timestamp)
+        except da_errors.MySQLError as e:
+            LOGGER.error('Error getting Folder IAM policies: %s', e)
+        return folder_policies
+
+    def _get_project_iam_policies(self):
+        """Get project IAM policies from data source.
+
+        Returns:
+            dict: The project policies.
         """
         project_policies = {}
-        project_policies = (
-            project_dao.ProjectDao().get_project_policies('projects',
-                                                          self.\
-                                                          snapshot_timestamp))
+        project_policies = (project_dao
+                            .ProjectDao(self.global_configs)
+                            .get_project_policies('projects',
+                                                  self.snapshot_timestamp))
         return project_policies
 
     def run(self):
-        """Runs the data collection."""
-        policy_data = []
-        org_policies = self._get_org_policies()
-        project_policies = self._get_project_policies()
+        """Runs the data collection.
 
-        if not org_policies and not project_policies:
+        Returns:
+            list: List of IAM policy data.
+            dict: A dict of resource counts.
+        """
+        policy_data = []
+        org_policies = self._get_org_iam_policies()
+        folder_policies = self._get_folder_iam_policies()
+        project_policies = self._get_project_iam_policies()
+
+        if not any([org_policies, folder_policies, project_policies]):
             LOGGER.warn('No policies found. Exiting.')
             sys.exit(1)
-        resource_counts = self._get_resource_count(org_policies,
-                                                   project_policies)
+        resource_counts = self._get_resource_count(
+            org_iam_policies=org_policies,
+            folder_iam_policies=folder_policies,
+            project_iam_policies=project_policies)
         policy_data.append(org_policies.iteritems())
+        policy_data.append(folder_policies.iteritems())
         policy_data.append(project_policies.iteritems())
 
         return policy_data, resource_counts
@@ -96,11 +115,11 @@ class IamPolicyScanner(base_scanner.BaseScanner):
         """Find violations in the policies.
 
         Args:
-            policies: The list of policies to find violations in.
-            rules_engine: The rules engine to run.
+            policies (list): The policies to find violations in.
+            rules_engine (RuleEngine): The rules engine to run.
 
         Returns:
-            A list of violations
+            list: A list of violations.
         """
         all_violations = []
         LOGGER.info('Finding policy violations...')
@@ -108,23 +127,23 @@ class IamPolicyScanner(base_scanner.BaseScanner):
             LOGGER.debug('%s => %s', resource, policy)
             violations = rules_engine.find_policy_violations(
                 resource, policy)
-            LOGGER.debug(violations)
             all_violations.extend(violations)
         return all_violations
 
     @staticmethod
-    def _get_resource_count(org_policies, project_policies):
-        """Get resource count for org and project policies.
+    def _get_resource_count(**kwargs):
+        """Get resource count for IAM policies.
 
         Args:
-            org_policies: organisation policies from inventory
-            project_pollicies: project policies from inventory.
+            kwargs: The policies to get resource counts for.
+
         Returns:
-            Resource count map
+            dict: Resource count map.
         """
         resource_counts = {
-            ResourceType.ORGANIZATION: len(org_policies),
-            ResourceType.PROJECT: len(project_policies),
+            ResourceType.ORGANIZATION: len(kwargs.get('org_iam_policies', [])),
+            ResourceType.FOLDER: len(kwargs.get('folder_iam_policies', [])),
+            ResourceType.PROJECT: len(kwargs.get('project_iam_policies', [])),
         }
 
         return resource_counts
