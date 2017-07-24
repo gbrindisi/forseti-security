@@ -204,9 +204,8 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
             'violation': violation
         }
 
-        if resource_type == 'project':
-            violation_project['project_id'] = resource_id
-            violation_project['ownership'] = self._get_project_ownership(
+        violation_project['project_id'] = resource_id
+        violation_project['ownership'] = self._get_project_ownership(
                 resource_id)
 
         return violation_project
