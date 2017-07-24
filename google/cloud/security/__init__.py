@@ -14,7 +14,10 @@
 
 """Forseti Security."""
 
-__version__ = '1.0.2'
+__version__ = '1.1.0'
 __package_name__ = 'forseti-security'
 
-__import__('pkg_resources').declare_namespace(__name__)
+try:
+    __import__('pkg_resources').declare_namespace(__name__)
+except ImportError:
+    __path__ = __import__('pkgutil').extend_path(__path__, __name__)

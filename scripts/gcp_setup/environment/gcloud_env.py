@@ -21,6 +21,7 @@ TODO: Write config options to an output file and give option to read in.
 
 from __future__ import print_function
 
+import datetime
 import json
 import os
 import re
@@ -50,16 +51,19 @@ class ForsetiGcpSetup(object):
 
     PROJECT_ID_REGEX = re.compile(r'^[a-z][a-z0-9-]{6,30}$')
     REQUIRED_APIS = [
+        {'name': 'Admin SDK',
+         'service': 'admin.googleapis.com'},
         {'name': 'Cloud SQL',
          'service': 'sql-component.googleapis.com'},
         {'name': 'Cloud SQL Admin',
          'service': 'sqladmin.googleapis.com'},
         {'name': 'Cloud Resource Manager',
          'service': 'cloudresourcemanager.googleapis.com'},
-        {'name': 'Admin SDK',
-         'service': 'admin.googleapis.com'},
+        {'name': 'Compute Engine',
+         'service': 'compute-component.googleapis.com'},
         {'name': 'Deployment Manager',
-         'service': 'deploymentmanager.googleapis.com'}]
+         'service': 'deploymentmanager.googleapis.com'},
+    ]
 
     ORG_IAM_ROLES = [
         'roles/browser',
@@ -72,7 +76,7 @@ class ForsetiGcpSetup(object):
 
     SERVICE_ACCT_FMT = '{}@{}.iam.gserviceaccount.com'
 
-    DEFAULT_BUCKET_FORMAT = 'gs://{}-forseti'
+    DEFAULT_BUCKET_FORMAT = 'gs://{}'
     GCS_LS_ERROR_REGEX = re.compile(r'^(.*Exception): (\d{3})', re.MULTILINE)
     BUCKET_REGIONS = [
         {'desc': 'Asia Pacific', 'region': 'Multi-Region', 'value': 'asia'},
@@ -116,9 +120,10 @@ class ForsetiGcpSetup(object):
     ]
 
     BRANCH_RELEASE_FMT = '{}: "{}"'
-    DEPLOY_TPL_DIR_PATH = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-            __file__)))), 'deployment-templates')
+    ROOT_DIR_PATH = os.path.dirname(
+        os.path.dirname(
+            os.path.dirname(
+                os.path.dirname(__file__))))
 
     def __init__(self, **kwargs):
         """Init.
@@ -132,6 +137,8 @@ class ForsetiGcpSetup(object):
         self.config_name = None
         self.auth_account = None
         self.organization_id = None
+        self.unassigned_roles = []
+
         self.project_id = None
         self.gcp_service_account = None
         self.gsuite_service_account = None
@@ -141,11 +148,14 @@ class ForsetiGcpSetup(object):
         self.cloudsql_instance = None
         self.cloudsql_user = None
         self.cloudsql_region = None
-        self.created_deployment = False
+        self.deployment_name = False
+        self.deploy_tpl_path = None
+        self.forseti_conf_path = None
 
         self.sendgrid_api_key = '""'
         self.notification_sender_email = '""'
         self.notification_recipient_email = '""'
+        self.gcp_gsuite_key_path = '""'
         self.gsuite_super_admin_email = '""'
 
     def __repr__(self):
@@ -173,8 +183,12 @@ class ForsetiGcpSetup(object):
         self.setup_bucket_name()
         self.setup_cloudsql_name()
         self.setup_cloudsql_user()
+
         self.generate_deployment_templates()
-        if not self.created_deployment:
+        self.generate_forseti_conf()
+        self.create_deployment()
+
+        if not self.deployment_name:
             self.create_data_storage()
         self.post_install_instructions()
 
@@ -572,6 +586,7 @@ class ForsetiGcpSetup(object):
         self.gsuite_svc_acct_key_location = os.path.abspath(
             os.path.join(
                 os.path.dirname(__file__),
+                '..',
                 'gsuite_key.json'))
 
     def _set_service_account(self, which_svc_acct, svc_acct):
@@ -613,6 +628,7 @@ class ForsetiGcpSetup(object):
             _, err = proc.communicate()
             if proc.returncode:
                 print(err)
+                self.unassigned_roles.append(role)
             else:
                 print('Done.')
 
@@ -689,7 +705,8 @@ class ForsetiGcpSetup(object):
             .strip().lower()
         if not instance_name:
             instance_name = self.DEFAULT_CLOUDSQL_INSTANCE_NAME
-        self.cloudsql_instance = instance_name
+        timestamp = datetime.datetime.now().strftime('%y%m%d%H%M')
+        self.cloudsql_instance = '{}-{}'.format(instance_name, timestamp)
 
         print('\nChoose the region in which to host your Cloud SQL:')
         self.cloudsql_region = self._choose_region(self.CLOUDSQL_REGIONS)
@@ -739,14 +756,58 @@ class ForsetiGcpSetup(object):
         """Generate deployment templates."""
         self._print_banner('Generate Deployment Manager templates')
 
+        # Deployment template in file
         deploy_tpl_path = os.path.abspath(
             os.path.join(
-                self.DEPLOY_TPL_DIR_PATH,
+                self.ROOT_DIR_PATH,
+                'deployment-templates',
                 'deploy-forseti.yaml.in'))
         out_tpl_path = os.path.abspath(
             os.path.join(
-                self.DEPLOY_TPL_DIR_PATH,
+                self.ROOT_DIR_PATH,
+                'deployment-templates',
                 'deploy-forseti-{}.yaml'.format(os.getpid())))
+
+        # Determine which branch or release of Forseti to deploy
+        if self.version:
+            branch_or_release = self.BRANCH_RELEASE_FMT.format(
+                'release-version', self.version)
+        else:
+            if not self.branch:
+                self.branch = 'master'
+            branch_or_release = self.BRANCH_RELEASE_FMT.format(
+                'branch-name', self.branch)
+
+        deploy_values = {
+            'CLOUDSQL_REGION': self.cloudsql_region,
+            'CLOUDSQL_INSTANCE_NAME': self.cloudsql_instance,
+            'SCANNER_BUCKET': self.rules_bucket_name[len('gs://'):],
+            'BUCKET_REGION': self.bucket_region,
+            'GCP_SERVICE_ACCOUNT': self.gcp_service_account,
+            'BRANCH_OR_RELEASE': branch_or_release,
+        }
+
+        # Create Deployment template with values filled in.
+        with open(deploy_tpl_path, 'r') as in_tmpl:
+            tmpl_contents = in_tmpl.read()
+            out_contents = tmpl_contents.format(**deploy_values)
+            with open(out_tpl_path, 'w') as out_tmpl:
+                out_tmpl.write(out_contents)
+                self.deploy_tpl_path = out_tpl_path
+
+        print('\nCreated a deployment template:\n    %s\n' %
+              self.deploy_tpl_path)
+
+    def generate_forseti_conf(self):
+        """Generate Forseti conf file."""
+        # Create a forseti_conf_dm.yaml config file with values filled in.
+        # forseti_conf.yaml in file
+        forseti_conf_in = os.path.abspath(
+            os.path.join(
+                self.ROOT_DIR_PATH, 'configs', 'forseti_conf.yaml.in'))
+        forseti_conf_gen = os.path.abspath(
+            os.path.join(
+                self.ROOT_DIR_PATH, 'configs', 'forseti_conf_dm.yaml'))
 
         # Ask for SendGrid API Key
         sendgrid_api_key = raw_input(
@@ -776,52 +837,57 @@ class ForsetiGcpSetup(object):
         if gsuite_super_admin_email:
             self.gsuite_super_admin_email = gsuite_super_admin_email
 
-        # Determine which branch or release of Forseti to deploy
-        if self.version:
-            branch_or_release = self.BRANCH_RELEASE_FMT.format(
-                'release-version', self.version)
-        else:
-            if not self.branch:
-                self.branch = 'master'
-            branch_or_release = self.BRANCH_RELEASE_FMT.format(
-                'branch-name', self.branch)
+        if self.gsuite_svc_acct_key_location:
+            self.gcp_gsuite_key_path = (
+                '/home/ubuntu/{}'.format(
+                    os.path.basename(self.gsuite_svc_acct_key_location)))
 
-        deploy_values = {
-            'CLOUDSQL_REGION': self.cloudsql_region,
-            'CLOUDSQL_INSTANCE_NAME': self.cloudsql_instance,
-            'SCANNER_BUCKET': self.rules_bucket_name[len('gs://'):],
-            'BUCKET_REGION': self.bucket_region,
-            'GCP_SERVICE_ACCOUNT': self.gcp_service_account,
-            'ORGANIZATION_ID_NUMBER': self.organization_id,
-            'BRANCH_OR_RELEASE': branch_or_release,
+        conf_values = {
+            'GROUPS_SERVICE_ACCOUNT_KEY_FILE': self.gcp_gsuite_key_path,
+            'DOMAIN_SUPER_ADMIN_EMAIL': self.gsuite_super_admin_email,
+            'EMAIL_RECIPIENT': self.notification_recipient_email,
+            'EMAIL_SENDER': self.notification_sender_email,
             'SENDGRID_API_KEY': self.sendgrid_api_key,
-            'NOTIFICATION_SENDER_EMAIL': self.notification_sender_email,
-            'NOTIFICATION_RECIPIENT_EMAIL': self.notification_recipient_email,
-            'SHOULD_INVENTORY_GROUPS': bool(self.gsuite_service_account),
-            'GSUITE_SUPER_ADMIN_EMAIL': self.gsuite_super_admin_email,
+            'SCANNER_BUCKET': self.rules_bucket_name[len('gs://'):],
+            'ENABLE_GROUP_SCANNER': bool(self.gsuite_service_account),
         }
-        with open(deploy_tpl_path, 'r') as in_tmpl:
+
+        with open(forseti_conf_in, 'r') as in_tmpl:
             tmpl_contents = in_tmpl.read()
-            out_contents = tmpl_contents.format(**deploy_values)
-            with open(out_tpl_path, 'w') as out_tmpl:
+            out_contents = tmpl_contents.format(**conf_values)
+            with open(forseti_conf_gen, 'w') as out_tmpl:
                 out_tmpl.write(out_contents)
+                self.forseti_conf_path = forseti_conf_gen
 
-        print('\nCreated a deployment template:\n    %s\n' % out_tpl_path)
+        print('\nCreated forseti_conf_dm.yaml config file:\n    %s\n' %
+              self.forseti_conf_path)
 
+    def create_deployment(self):
+        """Create the GCP deployment."""
         deploy_choice = raw_input('Create a GCP deployment? '
                                   '(y/N) ').strip().lower()
         if deploy_choice == 'y':
-            self.created_deployment = True
+            self.deployment_name = 'forseti-security-{}'.format(os.getpid())
             _ = subprocess.call(
                 ['gcloud', 'deployment-manager', 'deployments', 'create',
-                 'forseti-security-{}'.format(os.getpid()),
-                 '--config={}'.format(out_tpl_path)])
+                 self.deployment_name,
+                 '--config={}'.format(self.deploy_tpl_path)])
+            time.sleep(2)
+            _ = subprocess.call(
+                ['gsutil', 'cp', self.forseti_conf_path,
+                 '{}/configs/forseti_conf.yaml'.format(self.rules_bucket_name)])
+            rules_dir = os.path.abspath(
+                os.path.join(
+                    self.ROOT_DIR_PATH, 'rules'))
+            _ = subprocess.call(
+                ['gsutil', 'cp', '-r', rules_dir,
+                 '{}'.format(self.rules_bucket_name)])
 
     def create_data_storage(self):
         """Create Cloud SQL instance and Cloud Storage bucket. (optional)"""
         self._print_banner('Create data storage (optional)')
         print('Be advised! Only do these next 2 steps if you plan to deploy '
-              'locally or without Deployment Manager!\n')
+              'locally OR without Deployment Manager!\n')
         should_create_bucket = raw_input(
             'Create Cloud Storage bucket now? (y/N) ').strip().lower()
         if should_create_bucket == 'y':
@@ -863,8 +929,8 @@ class ForsetiGcpSetup(object):
                 '  e) Click "Save".\n\n'
                 %
                 (self.project_id,
+                 self.project_id,
                  self.organization_id,
-                 self.gsuite_service_account,
                  self.gsuite_service_account))
 
             if not self.gsuite_svc_acct_key_location:
@@ -880,8 +946,8 @@ class ForsetiGcpSetup(object):
                 '{}) Follow instructions on how to link the service account '
                 'to GSuite:\n\n'
                 '    '
-                'PLACEHOLDER FOR LINK ON HOW TO ENABLE SERVICE ACCT FOR '
-                'GSUITE\n\n')
+                'http://forsetisecurity.org/docs/howto/gsuite-group-collection'
+                '\n\n')
 
             if self.gsuite_svc_acct_key_location:
                 instructions.append(
@@ -893,9 +959,40 @@ class ForsetiGcpSetup(object):
             for (i, instr_text) in enumerate(instructions):
                 print(instr_text.format(i+1))
 
-        if self.created_deployment:
-            print('Since you chose to create a deployment via Deployment '
-                  'Manager, you can check out the details in the Cloud '
-                  'Console:\n\n'
+        if self.deployment_name:
+            print('You can check out the details of your deployment in the '
+                  'Cloud Console:\n\n'
                   '    https://console.cloud.google.com/deployments?'
-                  'project={}\n'.format(self.project_id))
+                  'project={}\n\n'.format(self.project_id))
+
+            if self.gsuite_service_account:
+                print('Since you are using a GSuite service account, after you '
+                      'download the json key, copy it to your Forseti instance '
+                      'with the following command:\n\n'
+                      '    gcloud compute copy-files <keyfile name> '
+                      'ubuntu@{}-vm:/home/ubuntu/gsuite_key.json\n\n'.format(
+                          self.deployment_name))
+        else:
+            print('Your generated Deployment Manager template can be '
+                  'found here:\n\n    {}\n'.format(self.deploy_tpl_path))
+            print('A forseti_conf_dm.yaml file has been generated. '
+                  'After creating your deployment, copy the following files '
+                  'from the root directory of forseti-security to '
+                  'your Forseti bucket:\n\n'
+                  '    gsutil cp configs/forseti_conf_dm.yaml '
+                  '{}/configs/forseti_conf.yaml\n'
+                  '    gsutil cp -r rules {}\n\n'.format(
+                      self.rules_bucket_name,
+                      self.rules_bucket_name))
+
+        if self.unassigned_roles:
+            print('Some required IAM roles could not be assigned. '
+                  'Please ask your Organization Admin to run these commands '
+                  'to assign the roles:\n\n')
+            for role in self.unassigned_roles:
+                print('gcloud organizations add-iam-policy-binding {} '
+                      '--member=serviceAccount:{} --role={}\n'.format(
+                          self.organization_id,
+                          self.gcp_service_account,
+                          role))
+            print('\n\n')
