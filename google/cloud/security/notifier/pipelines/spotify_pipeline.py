@@ -464,6 +464,9 @@ class SpotifyPipeline(base_notification_pipeline.BaseNotificationPipeline):
             clean_violation = self._get_clean_violation(v)
             if not self.is_whitelisted(clean_violation):
                 self.clean_violations.append(clean_violation)
+                
+        if not self.clean_violations:
+            return
 
         mapped_violations = self.group_violations_by_owner()
 
